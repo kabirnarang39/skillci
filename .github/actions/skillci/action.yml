@@ -1,0 +1,23 @@
+name: "skillci"
+description: "Lint, eval, and regression-test Claude Skills against a model matrix"
+inputs:
+  path:
+    description: "Path to the skill directory"
+    required: false
+    default: "."
+  anthropic-api-key:
+    description: "Anthropic API key"
+    required: true
+  upload:
+    description: "Upload results to the SkillCI dashboard"
+    required: false
+    default: "false"
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: go install github.com/kabirnarang/skillci/cmd/skillci@latest
+    - shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: ${{ github.action_path }}/entrypoint.sh "${{ inputs.path }}" "${{ inputs.upload }}"
