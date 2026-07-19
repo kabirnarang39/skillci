@@ -3,10 +3,22 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/spf13/cobra"
 )
 
 var version = "dev"
 
 func main() {
-	fmt.Fprintf(os.Stdout, "skillci %s\n", version)
+	root := &cobra.Command{
+		Use:     "skillci",
+		Short:   "Lint, eval, and regression-test Claude Skills",
+		Version: version,
+	}
+	root.AddCommand(newCheckCmd())
+
+	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
