@@ -40,6 +40,8 @@ func stubServerAlwaysFails(t *testing.T) *httptest.Server {
 
 func truePtr() *bool { v := true; return &v }
 
+func falsePtr() *bool { v := false; return &v }
+
 func TestRunMatrixFlagsNewRegressionWhenPriorRunPassed(t *testing.T) {
 	srv := stubServerAlwaysFails(t)
 	defer srv.Close()
@@ -119,5 +121,68 @@ func TestShouldFailCIAnyFailMode(t *testing.T) {
 	}
 	if report.ShouldFailCI("regression") {
 		t.Error("ShouldFailCI(regression) = true, want false when the only failure isn't a new regression")
+	}
+}
+
+func TestShouldFailCITriggeredOnlyCatchesFalsePositive(t *testing.T) {
+	// Case: asserts Triggered: false but result shows Triggered: true (false positive)
+	report := MatrixReport{Outcomes: []Outcome{
+		{
+			Case:   evalspec.Case{Assert: evalspec.Assertions{Triggered: falsePtr()}},
+			Result: runner.Result{Triggered: true},
+		},
+	}}
+	if !report.ShouldFailCI("triggered_only") {
+		t.Error("ShouldFailCI(triggered_only) = false, want true when skill triggers but should not (false positive)")
+	}
+}
+
+func TestShouldFailCITriggeredOnlyStillCatchesMissedTriggers(t *testing.T) {
+	// Case: asserts Triggered: true but result shows Triggered: false (missed trigger)
+	report := MatrixReport{Outcomes: []Outcome{
+		{
+			Case:   evalspec.Case{Assert: evalspec.Assertions{Triggered: truePtr()}},
+			Result: runner.Result{Triggered: false},
+		},
+	}}
+	if !report.ShouldFailCI("triggered_only") {
+		t.Error("ShouldFailCI(triggered_only) = false, want true when skill should trigger but does not (missed trigger)")
+	}
+}
+
+func TestShouldFailCITriggeredOnlyPassesWhenMatches(t *testing.T) {
+	// Case: asserts Triggered: true and result shows Triggered: true (correct)
+	report := MatrixReport{Outcomes: []Outcome{
+		{
+			Case:   evalspec.Case{Assert: evalspec.Assertions{Triggered: truePtr()}},
+			Result: runner.Result{Triggered: true},
+		},
+	}}
+	if report.ShouldFailCI("triggered_only") {
+		t.Error("ShouldFailCI(triggered_only) = true, want false when Triggered assertion matches result")
+	}
+
+	// Case: asserts Triggered: false and result shows Triggered: false (correct)
+	report = MatrixReport{Outcomes: []Outcome{
+		{
+			Case:   evalspec.Case{Assert: evalspec.Assertions{Triggered: falsePtr()}},
+			Result: runner.Result{Triggered: false},
+		},
+	}}
+	if report.ShouldFailCI("triggered_only") {
+		t.Error("ShouldFailCI(triggered_only) = true, want false when Triggered assertion matches result")
+	}
+}
+
+func TestShouldFailCITriggeredOnlyIgnoresNoAssertion(t *testing.T) {
+	// Case: no Triggered assertion (nil) should not affect verdict
+	report := MatrixReport{Outcomes: []Outcome{
+		{
+			Case:   evalspec.Case{Assert: evalspec.Assertions{Triggered: nil}},
+			Result: runner.Result{Triggered: true},
+		},
+	}}
+	if report.ShouldFailCI("triggered_only") {
+		t.Error("ShouldFailCI(triggered_only) = true, want false when Triggered assertion is nil (not applicable)")
 	}
 }

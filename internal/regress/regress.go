@@ -40,7 +40,7 @@ func (r MatrixReport) ShouldFailCI(failOn string) bool {
 				return true
 			}
 		case "triggered_only":
-			if o.Result.Triggered != true && o.Case.Assert.Triggered != nil && *o.Case.Assert.Triggered {
+			if o.Case.Assert.Triggered != nil && o.Result.Triggered != *o.Case.Assert.Triggered {
 				return true
 			}
 		default: // "regression"
