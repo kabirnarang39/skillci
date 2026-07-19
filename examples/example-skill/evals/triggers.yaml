@@ -1,0 +1,5 @@
+name: "example-triggers"
+prompt: "Can you demonstrate the example skill?"
+skill_under_test: "example-skill"
+assert:
+  triggered: true
