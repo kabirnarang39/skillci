@@ -17,6 +17,9 @@ func main() {
 	}
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newEvalCmd())
+	root.AddCommand(newRegressCmd())
+	root.AddCommand(newAcceptCmd())
+	root.AddCommand(newBadgeCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
