@@ -59,7 +59,10 @@ func LintSkill(dir string) ([]Issue, error) {
 	for _, match := range referencedFileRe.FindAllString(body, -1) {
 		refPath := filepath.Join(dir, match)
 		if _, err := os.Stat(refPath); os.IsNotExist(err) {
-			issues = append(issues, Issue{File: skillPath, Rule: "missing-referenced-file", Msg: fmt.Sprintf("referenced file %s does not exist", match)})
+			// Compute line number where the reference appears in body.
+			matchIdx := strings.Index(body, match)
+			lineNum := strings.Count(body[:matchIdx], "\n") + 1
+			issues = append(issues, Issue{File: skillPath, Line: lineNum, Rule: "missing-referenced-file", Msg: fmt.Sprintf("referenced file %s does not exist", match)})
 		}
 	}
 
