@@ -52,9 +52,17 @@ func skillPageHandler(store *Store) http.HandlerFunc {
 			return
 		}
 
+		// RenderSparkline expects oldest-to-newest; SkillHistory returns newest-to-oldest.
+		// Reverse for sparkline while keeping rows in original order for template.
+		sparklineRows := make([]IngestedResult, len(rows))
+		copy(sparklineRows, rows)
+		for i, j := 0, len(sparklineRows)-1; i < j; i, j = i+1, j-1 {
+			sparklineRows[i], sparklineRows[j] = sparklineRows[j], sparklineRows[i]
+		}
+
 		data := skillPageData{
 			Owner: owner, Repo: repo, Skill: skill,
-			SparklineSVG: template.HTML(RenderSparkline(rows)),
+			SparklineSVG: template.HTML(RenderSparkline(sparklineRows)),
 			Rows:         rows,
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
