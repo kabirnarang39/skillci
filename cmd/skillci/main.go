@@ -15,6 +15,7 @@ func main() {
 		Short:   "Lint, eval, and regression-test Claude Skills",
 		Version: version,
 	}
+	root.AddCommand(newInitCmd())
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newEvalCmd())
 	root.AddCommand(newRegressCmd())
