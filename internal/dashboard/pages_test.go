@@ -102,6 +102,21 @@ func TestRenderSparklineProducesSVG(t *testing.T) {
 	}
 }
 
+// TestSkillPageSparklineChronologicalOrder proves the skill page renders its
+// sparkline oldest-to-newest. The x-coordinate of each circle is purely
+// index-derived (see RenderSparkline: x := 10 + i*pointGap), so asserting on
+// cx tells us nothing about ordering — cx is ascending for ANY input slice
+// regardless of whether it's chronological. fill color, by contrast, depends
+// on each result's Passed value, so the SEQUENCE of fill colors left-to-right
+// genuinely reflects the order the handler fed results into RenderSparkline.
+//
+// Results are oldest=pass, middle=fail, newest=fail, giving expected
+// left-to-right colors [green, red, red]. Because oldest and newest have
+// different Passed values, this sequence is not a palindrome: if the
+// skillPageHandler regressed to passing store rows (newest-to-oldest)
+// straight into RenderSparkline instead of the chronologically-reversed
+// copy, the observed sequence would be [red, red, green] — the reverse —
+// and this test would fail.
 func TestSkillPageSparklineChronologicalOrder(t *testing.T) {
 	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
 	if url == "" {
@@ -118,11 +133,13 @@ func TestSkillPageSparklineChronologicalOrder(t *testing.T) {
 	baseTime := time.Now()
 	// Use unique identifiers to avoid collisions with other test runs
 	skill := "chronotest-" + strconv.FormatInt(baseTime.UnixNano(), 10)
-	// Insert results with distinct timestamps in order (oldest first insertion, newest last)
+	// Insert results with distinct timestamps AND distinct Passed values so
+	// the rendered color sequence is content-identifiable, not just an
+	// artifact of insertion count.
 	results := []IngestedResult{
-		{Owner: "test", Repo: "chronotest", Skill: skill, CommitSHA: "old", Model: "m1", Passed: false, Timestamp: baseTime.Add(-2 * time.Hour)},
-		{Owner: "test", Repo: "chronotest", Skill: skill, CommitSHA: "mid", Model: "m1", Passed: true, Timestamp: baseTime.Add(-1 * time.Hour)},
-		{Owner: "test", Repo: "chronotest", Skill: skill, CommitSHA: "new", Model: "m1", Passed: true, Timestamp: baseTime},
+		{Owner: "test", Repo: "chronotest", Skill: skill, CommitSHA: "old", Model: "m1", Passed: true, Timestamp: baseTime.Add(-2 * time.Hour)},
+		{Owner: "test", Repo: "chronotest", Skill: skill, CommitSHA: "mid", Model: "m1", Passed: false, Timestamp: baseTime.Add(-1 * time.Hour)},
+		{Owner: "test", Repo: "chronotest", Skill: skill, CommitSHA: "new", Model: "m1", Passed: false, Timestamp: baseTime},
 	}
 	for _, r := range results {
 		if err := store.InsertResult(context.Background(), r); err != nil {
@@ -148,26 +165,28 @@ func TestSkillPageSparklineChronologicalOrder(t *testing.T) {
 	}
 	svgContent := body[svgStart : svgEnd+6]
 
-	// Extract cx values from circles in the SVG (format: cx="10", cx="30", etc.)
-	cxRegex := regexp.MustCompile(`cx="(\d+)"`)
-	matches := cxRegex.FindAllStringSubmatch(svgContent, -1)
+	// Extract fill values from circles in the SVG in document order (which is
+	// ascending cx / index order — that part of RenderSparkline is unchanged
+	// and correct, so document order reliably reflects the order the handler
+	// passed results in).
+	fillRegex := regexp.MustCompile(`fill="(#[0-9a-fA-F]+)"`)
+	matches := fillRegex.FindAllStringSubmatch(svgContent, -1)
 	if len(matches) != 3 {
 		t.Fatalf("expected 3 circles in sparkline, found %d in SVG: %s", len(matches), svgContent)
 	}
 
-	cxValues := make([]int, len(matches))
+	const green, red = "#2ea44f", "#cf222e"
+	want := []string{green, red, red} // oldest(pass), middle(fail), newest(fail)
+	got := make([]string, len(matches))
 	for i, match := range matches {
-		val, err := strconv.Atoi(match[1])
-		if err != nil {
-			t.Fatalf("failed to parse cx value %q: %v", match[1], err)
-		}
-		cxValues[i] = val
+		got[i] = match[1]
 	}
-
-	// Verify cx values are strictly increasing (oldest result at smallest x, newest at largest x)
-	for i := 0; i < len(cxValues)-1; i++ {
-		if cxValues[i] >= cxValues[i+1] {
-			t.Errorf("sparkline cx values not in ascending order: %v", cxValues)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("sparkline fill sequence = %v, want %v (chronological oldest-to-newest); "+
+				"this order would invert to %v if the handler regressed to feeding newest-to-oldest rows into RenderSparkline",
+				got, want, []string{red, red, green})
+			break
 		}
 	}
 }
