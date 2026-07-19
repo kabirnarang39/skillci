@@ -12,6 +12,12 @@ inputs:
     description: "Upload results to the SkillCI dashboard"
     required: false
     default: "false"
+  dashboard-url:
+    description: "SkillCI dashboard URL (required when upload is true)"
+    required: false
+  ingest-token:
+    description: "SkillCI dashboard ingest token (required when upload is true)"
+    required: false
 runs:
   using: "composite"
   steps:
@@ -20,4 +26,6 @@ runs:
     - shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        SKILLCI_DASHBOARD_URL: ${{ inputs.dashboard-url }}
+        SKILLCI_INGEST_TOKEN: ${{ inputs.ingest-token }}
       run: ${{ github.action_path }}/entrypoint.sh "${{ inputs.path }}" "${{ inputs.upload }}"
