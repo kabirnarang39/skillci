@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kabirnarang/skillci/internal/anthropic"
 	"github.com/kabirnarang/skillci/internal/badge"
@@ -91,6 +92,9 @@ func newRegressCmd() *cobra.Command {
 				}
 			}
 
+			newRun.Timestamp = time.Now()
+			newRun.CommitSHA = os.Getenv("GITHUB_SHA")
+
 			hist.Append(newRun)
 			if err := hist.Save(historyPath); err != nil {
 				return err
@@ -109,10 +113,39 @@ func newRegressCmd() *cobra.Command {
 				}
 				owner, repoName := parseOwnerRepo(os.Getenv("GITHUB_REPOSITORY"))
 				commitSHA := os.Getenv("GITHUB_SHA")
+
+				// dir defaults to "." when running from inside a skill's own
+				// directory (the common usage pattern); filepath.Base(".")
+				// would upload under the bogus skill name ".", so resolve to
+				// an absolute path first.
+				absDir, err := filepath.Abs(dir)
+				if err != nil {
+					return err
+				}
+				skillName := filepath.Base(absDir)
+
+				// Aggregate per model before uploading: the dashboard's
+				// Leaderboard query keeps only the latest-inserted row per
+				// (skill, model), so one upload.Send per eval case would let
+				// whichever case is inserted last silently decide the
+				// leaderboard's pass/fail state. A model only counts as
+				// passing here if every case for it passed.
+				passedByModel := make(map[string]bool, len(cfg.Models))
 				for _, c := range newRun.Cases {
+					if passed, ok := passedByModel[c.Model]; !ok {
+						passedByModel[c.Model] = c.Passed
+					} else {
+						passedByModel[c.Model] = passed && c.Passed
+					}
+				}
+				for _, model := range cfg.Models {
+					passed, ok := passedByModel[model]
+					if !ok {
+						continue
+					}
 					err := upload.Send(context.Background(), dashboardURL, token, upload.Result{
-						RepoOwner: owner, Repo: repoName, Skill: filepath.Base(dir),
-						CommitSHA: commitSHA, Model: c.Model, Passed: c.Passed,
+						RepoOwner: owner, Repo: repoName, Skill: skillName,
+						CommitSHA: commitSHA, Model: model, Passed: passed,
 					})
 					if err != nil {
 						// per design §8: a dashboard hiccup must never break CI
