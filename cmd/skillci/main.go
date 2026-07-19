@@ -16,6 +16,7 @@ func main() {
 		Version: version,
 	}
 	root.AddCommand(newCheckCmd())
+	root.AddCommand(newEvalCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
