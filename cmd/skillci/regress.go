@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kabirnarang/skillci/internal/anthropic"
 	"github.com/kabirnarang/skillci/internal/badge"
@@ -12,11 +13,12 @@ import (
 	"github.com/kabirnarang/skillci/internal/evalspec"
 	"github.com/kabirnarang/skillci/internal/history"
 	"github.com/kabirnarang/skillci/internal/regress"
+	"github.com/kabirnarang/skillci/internal/upload"
 	"github.com/spf13/cobra"
 )
 
 func newRegressCmd() *cobra.Command {
-	var upload bool
+	var uploadFlag bool
 	cmd := &cobra.Command{
 		Use:   "regress [path]",
 		Short: "Run the eval suite across the configured model matrix and fail CI on new regressions",
@@ -99,8 +101,24 @@ func newRegressCmd() *cobra.Command {
 				return err
 			}
 
-			if upload {
-				fmt.Fprintln(cmd.OutOrStdout(), "note: --upload wiring lands in a later task; results were not sent to the dashboard")
+			if uploadFlag {
+				dashboardURL := os.Getenv("SKILLCI_DASHBOARD_URL")
+				token := os.Getenv("SKILLCI_INGEST_TOKEN")
+				if dashboardURL == "" || token == "" {
+					return fmt.Errorf("--upload requires SKILLCI_DASHBOARD_URL and SKILLCI_INGEST_TOKEN")
+				}
+				owner, repoName := parseOwnerRepo(os.Getenv("GITHUB_REPOSITORY"))
+				commitSHA := os.Getenv("GITHUB_SHA")
+				for _, c := range newRun.Cases {
+					err := upload.Send(context.Background(), dashboardURL, token, upload.Result{
+						RepoOwner: owner, Repo: repoName, Skill: filepath.Base(dir),
+						CommitSHA: commitSHA, Model: c.Model, Passed: c.Passed,
+					})
+					if err != nil {
+						// per design §8: a dashboard hiccup must never break CI
+						fmt.Fprintf(cmd.OutOrStdout(), "warning: dashboard upload failed: %v\n", err)
+					}
+				}
 			}
 
 			if report.ShouldFailCI(cfg.FailOn) {
@@ -109,6 +127,14 @@ func newRegressCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&upload, "upload", false, "upload results to the SkillCI dashboard")
+	cmd.Flags().BoolVar(&uploadFlag, "upload", false, "upload results to the SkillCI dashboard")
 	return cmd
+}
+
+func parseOwnerRepo(githubRepository string) (owner, repo string) {
+	parts := strings.SplitN(githubRepository, "/", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
 }
