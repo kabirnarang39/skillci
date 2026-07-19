@@ -63,6 +63,38 @@ func TestRegressCommandNoPriorHistoryDoesNotFailCI(t *testing.T) {
 	}
 }
 
+func TestRegressCommandUploadFailureDoesNotFailCI(t *testing.T) {
+	modelSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: false"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer modelSrv.Close()
+
+	dashSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer dashSrv.Close()
+
+	dir := setupSkillWithCase(t)
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", modelSrv.URL)
+	t.Setenv("SKILLCI_DASHBOARD_URL", dashSrv.URL)
+	t.Setenv("SKILLCI_INGEST_TOKEN", "secret-token")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--upload", dir})
+
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("Execute() error = %v, want nil — a dashboard upload failure must not fail CI (design §8)", err)
+	}
+}
+
 func TestAcceptCommandPromotesGeneratedCase(t *testing.T) {
 	dir := setupSkillWithCase(t)
 	genDir := filepath.Join(dir, "evals", "_generated")
