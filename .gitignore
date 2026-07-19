@@ -1,4 +1,5 @@
 /bin/
 *.test
-.skillci/
+.skillci/*
+!.skillci/badge.svg
 .env
