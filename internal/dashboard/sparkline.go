@@ -10,7 +10,11 @@ import (
 // Deliberately hand-rolled SVG (no charting library) — same approach as
 // internal/badge, keeps both binaries dependency-light.
 func RenderSparkline(results []IngestedResult) string {
-	const width, height, pointGap = 200, 40, 20
+	const height, pointGap = 40, 20
+	// ponytail: width scales to fit all points instead of a fixed 200px
+	// canvas that clipped anything past the 10th point. len(results)==0
+	// naturally floors this at 20, still a valid non-zero width.
+	width := 20 + len(results)*pointGap
 	var points strings.Builder
 	for i, r := range results {
 		x := 10 + i*pointGap

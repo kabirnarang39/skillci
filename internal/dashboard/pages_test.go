@@ -102,6 +102,45 @@ func TestRenderSparklineProducesSVG(t *testing.T) {
 	}
 }
 
+// TestRenderSparklineWidthFitsAllPoints proves the SVG canvas is wide enough
+// to actually display every point, not just the first ~10. Regression test
+// for a fixed width="200" canvas silently clipping the most recent (and most
+// important) results once a skill accumulated more than 10 history rows.
+func TestRenderSparklineWidthFitsAllPoints(t *testing.T) {
+	const n = 27 // more than the old fixed-width canvas could fit (10)
+	results := make([]IngestedResult, n)
+	for i := range results {
+		results[i] = IngestedResult{Passed: i%2 == 0, Timestamp: time.Now().Add(time.Duration(i) * time.Hour)}
+	}
+	svg := RenderSparkline(results)
+
+	widthRegex := regexp.MustCompile(`<svg[^>]*\bwidth="(\d+)"`)
+	widthMatch := widthRegex.FindStringSubmatch(svg)
+	if widthMatch == nil {
+		t.Fatalf("no width attribute found in SVG: %s", svg)
+	}
+	svgWidth, err := strconv.Atoi(widthMatch[1])
+	if err != nil {
+		t.Fatalf("width attribute %q not an integer: %v", widthMatch[1], err)
+	}
+
+	cxRegex := regexp.MustCompile(`<circle cx="(\d+)"`)
+	cxMatches := cxRegex.FindAllStringSubmatch(svg, -1)
+	if len(cxMatches) != n {
+		t.Fatalf("expected %d circles, found %d in SVG: %s", n, len(cxMatches), svg)
+	}
+	lastCx, err := strconv.Atoi(cxMatches[len(cxMatches)-1][1])
+	if err != nil {
+		t.Fatalf("last cx %q not an integer: %v", cxMatches[len(cxMatches)-1][1], err)
+	}
+
+	const radius = 3
+	if svgWidth < lastCx+radius {
+		t.Errorf("SVG width = %d, too small to contain last circle at cx=%d (radius %d); "+
+			"the most recent result is clipped off-canvas", svgWidth, lastCx, radius)
+	}
+}
+
 // TestSkillPageSparklineChronologicalOrder proves the skill page renders its
 // sparkline oldest-to-newest. The x-coordinate of each circle is purely
 // index-derived (see RenderSparkline: x := 10 + i*pointGap), so asserting on
