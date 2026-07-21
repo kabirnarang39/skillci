@@ -3,3 +3,4 @@
 .skillci/*
 !.skillci/badge.svg
 .env
+.claude/
