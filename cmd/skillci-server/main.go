@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/kabirnarang/skillci/internal/dashboard"
+	"github.com/kabirnarang39/skillci/internal/dashboard"
 )
 
 func main() {

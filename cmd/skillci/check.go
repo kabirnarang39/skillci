@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/kabirnarang/skillci/internal/lint"
+	"github.com/kabirnarang39/skillci/internal/lint"
 	"github.com/spf13/cobra"
 )
 

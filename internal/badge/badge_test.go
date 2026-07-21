@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kabirnarang/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/history"
 )
 
 func TestStateFromRunAllPassing(t *testing.T) {
