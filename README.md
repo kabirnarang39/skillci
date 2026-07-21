@@ -1,28 +1,20 @@
 # SkillCI
 
-**CI for Claude Skills.** Lint, eval, and regression-test `SKILL.md` files against a matrix of Claude models — and catch it automatically when a model upgrade silently breaks a skill that worked yesterday.
+**Regression testing for Claude Skills.** When a model update silently changes how your skill behaves, SkillCI catches it in CI — and turns the failure into a permanent test case, automatically.
 
 [![CI](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
 
+![SkillCI demo: skillci check, regress across a model matrix, catching an uncovered failure, generating an eval case, and accepting it](.github/assets/demo.gif)
+
+A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
+
 ## Why
 
-You write a Claude Skill. It works today — you ask something, it fires, it does the right thing.
+You write a Claude Skill. It works today. Six months from now, Anthropic ships a new model, and nobody tested your skill against it first — because until now, no tool did that automatically. It might stop triggering, ignore instructions it used to follow, or blow past a token budget you never knew it had. You find out by accident, not by CI.
 
-Six months from now, Anthropic ships a new model. Nobody tests old skills against new models before they ship — that's not Anthropic's job, and until now there hasn't been a tool to make it yours either. So on day one of the new model, your skill might:
-
-- stop triggering half the time, because the model reads its description differently
-- still trigger, but quietly ignore instructions it used to follow
-- still work, but now blow past a token budget you never knew it had
-
-You find out how? By accident — a workflow breaks, a review comes back wrong, and you spend twenty minutes discovering it's the model, not your skill file.
-
-Every other kind of software you ship has a safety net for this: tests that fail in CI the moment behavior changes. Skills have had none. **SkillCI is that safety net** — write down once what a skill should do, and get an automated, historical, CI-gated answer to "did it survive the last model release," instead of finding out the hard way.
-
-## What makes it different
-
-Most tooling around Claude Skills does one slice — lint, or eval, or token-budget scoring — and none of it tracks behavior across model versions over time. SkillCI's core differentiator is a **self-growing eval loop**: when a regression run catches a failure with no prior test coverage, it doesn't just fail — it writes a proposed eval case capturing exactly what broke, so you can `skillci accept` it and the same gap can never silently regress twice.
+Every other kind of software has a safety net for this — tests that fail the moment behavior changes. Skills have had none. SkillCI is that safety net: write down what a skill should do once, and get an automated answer to "did it survive the last model release" instead of finding out the hard way. [Full rationale below.](#the-full-case-for-this)
 
 ## Install
 
@@ -107,6 +99,12 @@ go run ./cmd/skillci-server
 | `skillci regress` | Run the full model matrix, diff vs. last known-good, gate CI |
 | `skillci accept` | Promote a generated eval case into the permanent suite |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
+
+## The full case for this
+
+Most tooling around Claude Skills does one slice — lint, or eval, or token-budget scoring — and none of it tracks behavior across model versions over time. That's the actual gap: on day one of a new model release, your skill might stop triggering half the time because the model reads its description differently, still trigger but quietly ignore instructions it used to follow, or still work but now blow past a token budget it never had before. You find out how? By accident — a workflow breaks, a review comes back wrong, and you spend twenty minutes discovering it's the model, not your skill file.
+
+SkillCI's core differentiator is the **self-growing eval loop**: when a regression run catches a failure with no prior test coverage, it doesn't just fail — it writes a proposed eval case capturing exactly what broke, so you `skillci accept` it and the same gap can never silently regress twice. Catch once, covered forever.
 
 ## Status
 
