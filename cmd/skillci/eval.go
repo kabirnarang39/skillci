@@ -6,9 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kabirnarang/skillci/internal/anthropic"
-	"github.com/kabirnarang/skillci/internal/evalspec"
-	"github.com/kabirnarang/skillci/internal/runner"
+	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/runner"
 	"github.com/spf13/cobra"
 )
 

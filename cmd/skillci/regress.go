@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kabirnarang/skillci/internal/anthropic"
-	"github.com/kabirnarang/skillci/internal/badge"
-	"github.com/kabirnarang/skillci/internal/config"
-	"github.com/kabirnarang/skillci/internal/evalspec"
-	"github.com/kabirnarang/skillci/internal/history"
-	"github.com/kabirnarang/skillci/internal/regress"
-	"github.com/kabirnarang/skillci/internal/upload"
+	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/badge"
+	"github.com/kabirnarang39/skillci/internal/config"
+	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/regress"
+	"github.com/kabirnarang39/skillci/internal/upload"
 	"github.com/spf13/cobra"
 )
 

@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	skillbadge "github.com/kabirnarang/skillci/internal/badge"
-	"github.com/kabirnarang/skillci/internal/history"
+	skillbadge "github.com/kabirnarang39/skillci/internal/badge"
+	"github.com/kabirnarang39/skillci/internal/history"
 	"github.com/spf13/cobra"
 )
 

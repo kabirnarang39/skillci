@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kabirnarang/skillci/internal/anthropic"
-	"github.com/kabirnarang/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"gopkg.in/yaml.v3"
 )
 

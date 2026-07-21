@@ -12,11 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kabirnarang/skillci/internal/anthropic"
-	"github.com/kabirnarang/skillci/internal/config"
-	"github.com/kabirnarang/skillci/internal/evalspec"
-	"github.com/kabirnarang/skillci/internal/history"
-	"github.com/kabirnarang/skillci/internal/runner"
+	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/config"
+	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/runner"
 	"gopkg.in/yaml.v3"
 )
 

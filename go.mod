@@ -1,4 +1,4 @@
-module github.com/kabirnarang/skillci
+module github.com/kabirnarang39/skillci
 
 go 1.25.3
 

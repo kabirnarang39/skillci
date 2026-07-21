@@ -22,7 +22,7 @@ runs:
   using: "composite"
   steps:
     - shell: bash
-      run: go install github.com/kabirnarang/skillci/cmd/skillci@latest
+      run: go install github.com/kabirnarang39/skillci/cmd/skillci@latest
     - shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}

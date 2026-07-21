@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kabirnarang/skillci/internal/history"
-	"github.com/kabirnarang/skillci/internal/upload"
+	"github.com/kabirnarang39/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/upload"
 )
 
 func setupSkillWithCase(t *testing.T) string {

@@ -3,7 +3,7 @@ package badge
 import (
 	"fmt"
 
-	"github.com/kabirnarang/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/history"
 )
 
 type State string
