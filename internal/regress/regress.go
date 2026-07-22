@@ -80,7 +80,12 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 				if hadPrior && prior.Passed {
 					isNewRegression = true
 				}
-				if !hadPrior {
+				// A snapshotting case already has its own review artifact
+				// (the pending golden file) and review flow (`skillci diff`
+				// / `skillci accept --model`) — don't also clone it into
+				// the self-growing eval loop for the same failure.
+				isSnapshotCase := c.Assert.Snapshot != nil && *c.Assert.Snapshot
+				if !hadPrior && !isSnapshotCase {
 					report.GeneratedCases = append(report.GeneratedCases, evalspec.Case{
 						Name:           c.Name + "-generated-" + model,
 						Prompt:         c.Prompt,

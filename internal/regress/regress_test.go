@@ -14,6 +14,7 @@ import (
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/history"
 	"github.com/kabirnarang39/skillci/internal/runner"
+	"github.com/kabirnarang39/skillci/internal/snapshot"
 )
 
 func newSkillDir(t *testing.T) string {
@@ -90,6 +91,48 @@ func TestRunMatrixNoRegressionWhenNoPriorHistory(t *testing.T) {
 	}
 	if len(report.GeneratedCases) != 1 {
 		t.Errorf("GeneratedCases = %v, want 1 (uncovered failing case)", report.GeneratedCases)
+	}
+}
+
+func TestRunMatrixSnapshotStrictFailureDoesNotProposeGeneratedCase(t *testing.T) {
+	// Regression test: a snapshot_strict case that drifts on its very
+	// first-ever comparison (no prior history) already has its own review
+	// artifact (the pending golden file) — RunMatrix must not ALSO propose
+	// a generated eval case for the same drift.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true\nOld leaves drift and settle."}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	dir := newSkillDir(t)
+	if err := snapshot.Save(dir, "c1", "claude-sonnet-5", "Old leaves drift and fall."); err != nil {
+		t.Fatalf("seeding golden: %v", err)
+	}
+
+	cases := []evalspec.Case{
+		{
+			Name:   "c1",
+			Prompt: "write a haiku",
+			Assert: evalspec.Assertions{Snapshot: truePtr(), SnapshotStrict: truePtr()},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	report, _, err := RunMatrix(context.Background(), client, dir, cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 1 || report.Outcomes[0].Result.Passed {
+		t.Fatalf("Outcomes = %+v, want one failed (snapshot_strict) outcome", report.Outcomes)
+	}
+	if len(report.GeneratedCases) != 0 {
+		t.Errorf("GeneratedCases = %v, want none — snapshot cases manage their own review flow", report.GeneratedCases)
 	}
 }
 
