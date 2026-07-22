@@ -15,6 +15,13 @@ type Assertions struct {
 	Contains        []string `yaml:"contains"`
 	NotContains     []string `yaml:"not_contains"`
 	MaxTokensLoaded *int     `yaml:"max_tokens_loaded"`
+	// Snapshot opts a case into capturing a per-model golden-baseline
+	// response and diffing future runs against it. A detected diff is
+	// informational only unless SnapshotStrict is also true.
+	Snapshot *bool `yaml:"snapshot"`
+	// SnapshotStrict makes a detected snapshot diff a hard case failure,
+	// same as any other assertion. Meaningless if Snapshot is not true.
+	SnapshotStrict *bool `yaml:"snapshot_strict"`
 }
 
 type Case struct {
