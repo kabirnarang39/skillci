@@ -68,6 +68,32 @@ skillci accept unrelated-request-should-not-trigger-generated-claude-sonnet-5
 
 promotes it into `evals/`, so it's a tracked regression guard from then on.
 
+For cases where you want to know if a skill's actual response *content*
+drifts between runs — not just whether it triggered or hit the right
+substrings — add `snapshot: true`:
+
+```yaml
+name: "haiku-tone-check"
+prompt: "Write a haiku about the ocean."
+skill_under_test: "haiku-writer"
+assert:
+  triggered: true
+  snapshot: true
+```
+
+The first run captures the response as a per-model golden baseline
+(`evals/<case>.<model>.golden.txt`). Every later run word-diffs the new
+response against it and shows what changed — without failing CI, unless
+you also set `snapshot_strict: true`. This is deliberately informational
+by default: it tells you *that* something changed, the same way any
+snapshot-testing tool (Jest, ApprovalTests) does — not whether the change
+is good or bad. You decide, then run:
+
+```bash
+skillci diff path/to/your-skill my-case --model claude-sonnet-5   # inspect
+skillci accept my-case --model claude-sonnet-5                    # promote
+```
+
 ## GitHub Actions
 
 ```yaml
@@ -98,6 +124,7 @@ go run ./cmd/skillci-server
 | `skillci eval` | Run the eval suite against one model |
 | `skillci regress` | Run the full model matrix, diff vs. last known-good, gate CI |
 | `skillci accept` | Promote a generated eval case into the permanent suite |
+| `skillci diff` | Show a case's pending snapshot change against its golden baseline |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
 
 ## The full case for this
