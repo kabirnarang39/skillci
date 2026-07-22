@@ -57,6 +57,9 @@ func newEvalCmd() *cobra.Command {
 				for _, f := range result.Failures {
 					fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", f)
 				}
+				if result.SnapshotDiff != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", result.SnapshotDiff.Render)
+				}
 			}
 
 			if failed > 0 {
