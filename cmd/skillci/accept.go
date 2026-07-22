@@ -5,17 +5,27 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kabirnarang39/skillci/internal/snapshot"
 	"github.com/spf13/cobra"
 )
 
 func newAcceptCmd() *cobra.Command {
-	var path string
+	var path, model string
 	cmd := &cobra.Command{
 		Use:   "accept <case-name>",
-		Short: "Promote a generated eval case from evals/_generated/ into evals/",
+		Short: "Promote a generated eval case, or a pending snapshot change with --model, into the accepted state",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+
+			if model != "" {
+				if err := snapshot.PromotePending(path, name, model); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "accepted snapshot change for %s (%s)\n", name, model)
+				return nil
+			}
+
 			src := filepath.Join(path, "evals", "_generated", name+".yaml")
 			dst := filepath.Join(path, "evals", name+".yaml")
 
@@ -34,5 +44,6 @@ func newAcceptCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&path, "path", ".", "skill directory")
+	cmd.Flags().StringVar(&model, "model", "", "model whose pending snapshot change to accept (omit to accept a generated eval case instead)")
 	return cmd
 }

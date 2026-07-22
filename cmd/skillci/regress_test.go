@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kabirnarang39/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/snapshot"
 	"github.com/kabirnarang39/skillci/internal/upload"
 )
 
@@ -303,5 +304,43 @@ func TestRegressCommandPrintsSnapshotDiffWhenChanged(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "SNAPSHOT CHANGED") {
 		t.Errorf("output = %q, want it to mention SNAPSHOT CHANGED", out.String())
+	}
+}
+
+func TestAcceptCommandPromotesSnapshotWithModelFlag(t *testing.T) {
+	dir := t.TempDir()
+	if err := snapshot.Save(dir, "my-case", "claude-sonnet-5", "old text"); err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.SavePending(dir, "my-case", "claude-sonnet-5", "new text"); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := newAcceptCmd()
+	cmd.SetArgs([]string{"my-case", "--model", "claude-sonnet-5", "--path", dir})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	golden, ok, err := snapshot.Load(dir, "my-case", "claude-sonnet-5")
+	if err != nil || !ok {
+		t.Fatalf("golden not found after accept: ok=%v err=%v", ok, err)
+	}
+	if golden != "new text" {
+		t.Errorf("golden = %q, want %q", golden, "new text")
+	}
+	if _, ok, _ := snapshot.LoadPending(dir, "my-case", "claude-sonnet-5"); ok {
+		t.Error("pending snapshot still exists after accept")
+	}
+}
+
+func TestAcceptCommandModelFlagErrorsWithNoPendingSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	cmd := newAcceptCmd()
+	cmd.SetArgs([]string{"no-such-case", "--model", "claude-sonnet-5", "--path", dir})
+
+	if err := cmd.Execute(); err == nil {
+		t.Error("Execute() error = nil, want error when no pending snapshot exists")
 	}
 }
