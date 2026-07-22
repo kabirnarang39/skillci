@@ -9,16 +9,18 @@ import (
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/snapshot"
 	"gopkg.in/yaml.v3"
 )
 
 type Result struct {
-	CaseName    string
-	Model       string
-	Triggered   bool
-	Passed      bool
-	Failures    []string
-	InputTokens int
+	CaseName     string
+	Model        string
+	Triggered    bool
+	Passed       bool
+	Failures     []string
+	InputTokens  int
+	SnapshotDiff *snapshot.Diff
 }
 
 type skillMeta struct {
@@ -105,6 +107,29 @@ If, given the user's message, you would invoke this skill, begin your response w
 	}
 	if c.Assert.MaxTokensLoaded != nil && msg.InputTokens > *c.Assert.MaxTokensLoaded {
 		result.Failures = append(result.Failures, fmt.Sprintf("input_tokens = %d, exceeds max_tokens_loaded %d", msg.InputTokens, *c.Assert.MaxTokensLoaded))
+	}
+
+	if c.Assert.Snapshot != nil && *c.Assert.Snapshot {
+		golden, ok, err := snapshot.Load(skillDir, c.Name, model)
+		if err != nil {
+			return Result{}, err
+		}
+		if !ok {
+			if err := snapshot.Save(skillDir, c.Name, model, content); err != nil {
+				return Result{}, err
+			}
+		} else {
+			diff := snapshot.Compute(golden, content)
+			if diff.Changed {
+				result.SnapshotDiff = &diff
+				if err := snapshot.SavePending(skillDir, c.Name, model, content); err != nil {
+					return Result{}, err
+				}
+				if c.Assert.SnapshotStrict != nil && *c.Assert.SnapshotStrict {
+					result.Failures = append(result.Failures, fmt.Sprintf("snapshot changed: %d word(s) differ from golden baseline", diff.WordsChanged))
+				}
+			}
+		}
 	}
 
 	result.Passed = len(result.Failures) == 0
