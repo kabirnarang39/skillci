@@ -90,7 +90,7 @@ snapshot-testing tool (Jest, ApprovalTests) does — not whether the change
 is good or bad. You decide, then run:
 
 ```bash
-skillci diff path/to/your-skill my-case --model claude-sonnet-5   # inspect
+skillci diff my-case --path path/to/your-skill --model claude-sonnet-5   # inspect
 skillci accept my-case --model claude-sonnet-5                    # promote
 ```
 
