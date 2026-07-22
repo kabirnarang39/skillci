@@ -75,6 +75,9 @@ func newRegressCmd() *cobra.Command {
 				for _, f := range o.Result.Failures {
 					fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", f)
 				}
+				if o.Result.SnapshotDiff != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", o.Result.SnapshotDiff.Render)
+				}
 			}
 
 			if len(report.GeneratedCases) > 0 {
