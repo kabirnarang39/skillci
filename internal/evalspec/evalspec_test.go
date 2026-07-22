@@ -65,3 +65,47 @@ func TestLoadDirSkipsGeneratedByDefault(t *testing.T) {
 		t.Errorf("LoadDir() = %v, want only the non-generated case", cases)
 	}
 }
+
+func TestLoadDirParsesSnapshotFields(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "snap.yaml", `
+name: snapshot-case
+prompt: "hi"
+skill_under_test: some-skill
+assert:
+  snapshot: true
+  snapshot_strict: true
+`)
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("LoadDir() got %d cases, want 1", len(cases))
+	}
+	c := cases[0]
+	if c.Assert.Snapshot == nil || !*c.Assert.Snapshot {
+		t.Errorf("Assert.Snapshot = %v, want true", c.Assert.Snapshot)
+	}
+	if c.Assert.SnapshotStrict == nil || !*c.Assert.SnapshotStrict {
+		t.Errorf("Assert.SnapshotStrict = %v, want true", c.Assert.SnapshotStrict)
+	}
+}
+
+func TestLoadDirSnapshotFieldsDefaultNil(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "plain.yaml", "name: plain-case\nprompt: p\nassert:\n  triggered: true\n")
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Assert.Snapshot != nil {
+		t.Errorf("Assert.Snapshot = %v, want nil when not specified", c.Assert.Snapshot)
+	}
+	if c.Assert.SnapshotStrict != nil {
+		t.Errorf("Assert.SnapshotStrict = %v, want nil when not specified", c.Assert.SnapshotStrict)
+	}
+}
