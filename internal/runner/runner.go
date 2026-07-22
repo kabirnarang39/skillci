@@ -109,7 +109,11 @@ If, given the user's message, you would invoke this skill, begin your response w
 		result.Failures = append(result.Failures, fmt.Sprintf("input_tokens = %d, exceeds max_tokens_loaded %d", msg.InputTokens, *c.Assert.MaxTokensLoaded))
 	}
 
-	if c.Assert.Snapshot != nil && *c.Assert.Snapshot {
+	// Only capture/compare a snapshot when every other assertion has
+	// already passed. Otherwise a case that e.g. unexpectedly failed to
+	// trigger would save its empty/garbage response as the golden
+	// baseline (see final-review bug: empty-golden poisoning).
+	if len(result.Failures) == 0 && c.Assert.Snapshot != nil && *c.Assert.Snapshot {
 		golden, ok, err := snapshot.Load(skillDir, c.Name, model)
 		if err != nil {
 			return Result{}, err

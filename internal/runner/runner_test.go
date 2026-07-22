@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
@@ -256,6 +257,49 @@ func TestRunCaseSnapshotChangedStrictFails(t *testing.T) {
 	}
 	if len(result.Failures) == 0 {
 		t.Error("Failures is empty, want a snapshot-changed failure message")
+	}
+}
+
+func TestRunCaseSnapshotSkippedWhenOtherAssertionFails(t *testing.T) {
+	// Regression test: a case asserting Triggered=true and Snapshot=true
+	// whose response unexpectedly doesn't trigger must NOT save an empty
+	// golden baseline. The triggered-mismatch failure should win, and the
+	// snapshot block must not run at all.
+	srv := stubServer(t, "SKILLCI_TRIGGERED: false", 100)
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+
+	c := evalspec.Case{
+		Name:   "snap-case",
+		Prompt: "write a haiku",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false (case did not trigger as asserted)")
+	}
+	foundTriggeredFailure := false
+	for _, f := range result.Failures {
+		if strings.Contains(f, "triggered") {
+			foundTriggeredFailure = true
+		}
+		if strings.Contains(f, "snapshot") {
+			t.Errorf("Failures contains a snapshot failure %q, want only the triggered-mismatch failure", f)
+		}
+	}
+	if !foundTriggeredFailure {
+		t.Errorf("Failures = %v, want a triggered-mismatch message", result.Failures)
+	}
+
+	if _, ok, err := snapshot.Load(dir, "snap-case", "claude-sonnet-5"); err != nil {
+		t.Fatalf("snapshot.Load() error = %v", err)
+	} else if ok {
+		t.Error("a golden file was saved from a failed run — empty-golden poisoning bug not fixed")
 	}
 }
 
