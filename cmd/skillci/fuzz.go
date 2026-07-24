@@ -64,6 +64,9 @@ func newFuzzCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", f)
 				}
 				printFuzzFindings(cmd.OutOrStdout(), result.FuzzFindings)
+				if c.Assert.MaxLatencyMs != nil {
+					printLatencyWarning(cmd.OutOrStdout(), result, *c.Assert.MaxLatencyMs)
+				}
 			}
 
 			if ran == 0 {

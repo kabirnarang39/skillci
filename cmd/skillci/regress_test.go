@@ -537,3 +537,36 @@ func TestAcceptCommandModelFlagErrorsWithNoPendingSnapshot(t *testing.T) {
 		t.Error("Execute() error = nil, want error when no pending snapshot exists")
 	}
 }
+
+func TestRegressCommandPrintsLatencyWarningWhenExceeded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true\nhi"}},
+			"usage":   map[string]int{"input_tokens": 10},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := setupSkillWithCase(t)
+	caseContent := "name: c1\nprompt: review this\nassert:\n  triggered: true\n  max_latency_ms: 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "c1.yaml"), []byte(caseContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	if !strings.Contains(out.String(), "[LATENCY]") {
+		t.Errorf("output = %q, want a [LATENCY] line", out.String())
+	}
+}
