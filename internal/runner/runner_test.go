@@ -706,6 +706,29 @@ func TestRunCaseLatencyStrictFails(t *testing.T) {
 	}
 }
 
+func TestRunCaseLatencyNotExceededWhenUnderCap(t *testing.T) {
+	srv := stubServer(t, "SKILLCI_TRIGGERED: true\nhi", 100)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "latency-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:    truePtr(),
+			MaxLatencyMs: int64Ptr(10000),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.LatencyExceeded {
+		t.Error("LatencyExceeded = true, want false (measured latency well under the 10000ms cap)")
+	}
+}
+
 func TestRunCaseFailsOnCostBudget(t *testing.T) {
 	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 1_000_000, 1_000_000, 0)
 	defer srv.Close()

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFuzzCmdSkipsCasesWithoutFuzzAssertion(t *testing.T) {
@@ -115,6 +116,40 @@ func TestFuzzCmdSkipsAssertionsWhenCaseFails(t *testing.T) {
 	}
 	if bytes.Contains(out.Bytes(), []byte("[FUZZ]")) {
 		t.Errorf("output = %q, [FUZZ] should not appear when fuzzing didn't run", out.String())
+	}
+}
+
+func TestFuzzCmdPrintsLatencyWarningWhenExceeded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true\nhi"}},
+			"usage":   map[string]int{"input_tokens": 10},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: demo\ndescription: Demo.\n---\nBody.\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "evals"), 0o755)
+	caseContent := "name: fuzzy-latency\nprompt: \"Can you write a haiku?\"\nassert:\n  triggered: true\n  fuzz: true\n  max_latency_ms: 1\n"
+	os.WriteFile(filepath.Join(dir, "evals", "fuzzy_latency.yaml"), []byte(caseContent), 0o644)
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newFuzzCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	if !strings.Contains(out.String(), "[LATENCY]") {
+		t.Errorf("output = %q, want a [LATENCY] line", out.String())
 	}
 }
 
