@@ -48,6 +48,18 @@ type Assertions struct {
 	// assertion for a model with no pricing entry configured fails with a
 	// clear "no pricing configured" message, never silently skipped.
 	MaxCostUSD *float64 `yaml:"max_cost_usd"`
+	// FlakeRetries reruns the case up to N additional times when its
+	// trigger-related assertions (Triggered/Contains/NotContains) fail on
+	// the first attempt, taking a majority verdict across all attempts
+	// instead of trusting a single sample. Budget assertions
+	// (MaxTokensLoaded/MaxOutputTokens/MaxLatencyMs/MaxCostUSD) are never
+	// retried — they're checked once against the first attempt only, same
+	// as today.
+	FlakeRetries *int `yaml:"flake_retries"`
+	// FlakeStrict makes an unresolved tie (no majority reached across all
+	// attempts) a hard case failure. Meaningless if FlakeRetries is not
+	// set. Without it, a tie is informational only.
+	FlakeStrict *bool `yaml:"flake_strict"`
 }
 
 type Case struct {
