@@ -85,7 +85,8 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 				// / `skillci accept --model`) — don't also clone it into
 				// the self-growing eval loop for the same failure.
 				isSnapshotCase := c.Assert.Snapshot != nil && *c.Assert.Snapshot
-				if !hadPrior && !isSnapshotCase {
+				isFuzzStrictCase := c.Assert.FuzzStrict != nil && *c.Assert.FuzzStrict
+				if !hadPrior && !isSnapshotCase && !isFuzzStrictCase {
 					report.GeneratedCases = append(report.GeneratedCases, evalspec.Case{
 						Name:           c.Name + "-generated-" + model,
 						Prompt:         c.Prompt,
