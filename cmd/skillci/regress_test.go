@@ -182,6 +182,75 @@ func TestRegressCommandSuggestsBisectOnNewRegression(t *testing.T) {
 	}
 }
 
+// TestRegressCommandAutoBisectFindsCulpritOnNewRegression proves --auto-bisect
+// actually runs the bisect logic in-process — rather than only printing a
+// suggestion — and that it resolves --bad to the commit regress just tested
+// (not whatever history.json still has on disk from the previous run, which
+// hasn't been updated with this run's result yet at the point auto-bisect
+// fires).
+func TestRegressCommandAutoBisectFindsCulpritOnNewRegression(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		text := "SKILLCI_TRIGGERED: true"
+		if strings.Contains(string(body), "BROKEN") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := setupSkillWithCase(t)
+	runGitCmd(t, dir, "init", "-q")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "add", ".")
+	runGitCmd(t, dir, "commit", "-q", "-m", "c0: initial")
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+	t.Setenv("GITHUB_SHA", "")
+
+	// First run at the good commit establishes a passing history entry.
+	cmd1 := newRegressCmd()
+	cmd1.SetOut(&bytes.Buffer{})
+	cmd1.SetArgs([]string{dir})
+	if err := cmd1.Execute(); err != nil {
+		t.Fatalf("first Execute() error = %v", err)
+	}
+
+	// Introduce the regression as a new commit.
+	brokenSkill := "---\nname: pr-review\ndescription: Reviews PRs, now BROKEN.\n---\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(brokenSkill), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitCmd(t, dir, "add", ".")
+	runGitCmd(t, dir, "commit", "-q", "-m", "c1: culprit")
+	badSHA, err := gitutil.RevParseHEAD(dir)
+	if err != nil {
+		t.Fatalf("RevParseHEAD() error = %v", err)
+	}
+
+	cmd2 := newRegressCmd()
+	var out bytes.Buffer
+	cmd2.SetOut(&out)
+	cmd2.SetArgs([]string{"--auto-bisect", dir})
+	if err := cmd2.Execute(); err == nil {
+		t.Fatal("second Execute() error = nil, want an error (fail_on=regression default)")
+	}
+
+	if !strings.Contains(out.String(), "auto-bisecting c1") {
+		t.Errorf("output = %q, want an auto-bisecting announcement for case c1", out.String())
+	}
+	if !strings.Contains(out.String(), "culprit: "+badSHA) {
+		t.Errorf("output = %q, want it to name culprit %s (the commit that introduced BROKEN)", out.String(), badSHA)
+	}
+}
+
 func TestRegressCommandNoPriorHistoryDoesNotFailCI(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{
