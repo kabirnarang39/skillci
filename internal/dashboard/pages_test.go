@@ -231,6 +231,134 @@ func TestRenderSparklineWidthFitsAllPoints(t *testing.T) {
 // straight into RenderSparkline instead of the chronologically-reversed
 // copy, the observed sequence would be [red, red, green] — the reverse —
 // and this test would fail.
+// TestSkillPageRendersSeparateSparklinePerModel proves two models tested
+// against the same skill get their own independent sparkline each,
+// instead of the old behavior of interleaving both models' results onto
+// one combined timeline (misleading: adjacent points could belong to
+// different models entirely, not reflect one continuous trend).
+func TestSkillPageRendersSeparateSparklinePerModel(t *testing.T) {
+	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("SKILLCI_TEST_DATABASE_URL not set")
+	}
+	store, err := NewStore(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	skill := "multimodel-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	results := []IngestedResult{
+		{Owner: "test", Repo: "multimodel", Skill: skill, CommitSHA: "a1", Model: "claude-sonnet-5", Passed: true, Timestamp: time.Now().Add(-2 * time.Hour)},
+		{Owner: "test", Repo: "multimodel", Skill: skill, CommitSHA: "a2", Model: "claude-sonnet-5", Passed: true, Timestamp: time.Now().Add(-1 * time.Hour)},
+		{Owner: "test", Repo: "multimodel", Skill: skill, CommitSHA: "b1", Model: "claude-opus-4-8", Passed: false, Timestamp: time.Now().Add(-2 * time.Hour)},
+		{Owner: "test", Repo: "multimodel", Skill: skill, CommitSHA: "b2", Model: "claude-opus-4-8", Passed: false, Timestamp: time.Now().Add(-1 * time.Hour)},
+	}
+	for _, r := range results {
+		if err := store.InsertResult(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
+	req := httptest.NewRequest(http.MethodGet, "/s/test/multimodel/"+skill, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	if strings.Count(body, "<svg") != 2 {
+		t.Fatalf("found %d <svg> blocks, want 2 (one per model); body = %s", strings.Count(body, "<svg"), body)
+	}
+	if !strings.Contains(body, "claude-sonnet-5 — History Trend") {
+		t.Error("body missing claude-sonnet-5's own trend card")
+	}
+	if !strings.Contains(body, "claude-opus-4-8 — History Trend") {
+		t.Error("body missing claude-opus-4-8's own trend card")
+	}
+
+	// claude-sonnet-5's own sparkline (2 passes) must not contain any red
+	// circle bled in from claude-opus-4-8's failing results — proves the
+	// two models' data genuinely isn't mixed into one SVG.
+	sonnetStart := strings.Index(body, "claude-sonnet-5 — History Trend")
+	sonnetSVGStart := strings.Index(body[sonnetStart:], "<svg") + sonnetStart
+	sonnetSVGEnd := strings.Index(body[sonnetSVGStart:], "</svg>") + sonnetSVGStart
+	sonnetSVG := body[sonnetSVGStart:sonnetSVGEnd]
+	if strings.Contains(sonnetSVG, "#cf222e") {
+		t.Errorf("claude-sonnet-5's sparkline contains a red (fail) circle, want only green — its own results are both passes; opus's failures must not have leaked in: %s", sonnetSVG)
+	}
+}
+
+// TestSkillPageShowsRegressedBadgeWhenLatestRunFlipsFromPass proves the
+// dashboard's own regression indicator — computed from the same "used to
+// pass, now doesn't" definition regress.go's IsNewRegression uses — fires
+// when a model's most recent result failed after the one before it
+// passed, and stays silent for a model that's simply always been failing.
+func TestSkillPageShowsRegressedBadgeWhenLatestRunFlipsFromPass(t *testing.T) {
+	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("SKILLCI_TEST_DATABASE_URL not set")
+	}
+	store, err := NewStore(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	skill := "regressed-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	results := []IngestedResult{
+		// regressed-model: passed, then failed -> should show the badge
+		{Owner: "test", Repo: "regressed", Skill: skill, CommitSHA: "a1", Model: "regressed-model", Passed: true, Timestamp: time.Now().Add(-2 * time.Hour)},
+		{Owner: "test", Repo: "regressed", Skill: skill, CommitSHA: "a2", Model: "regressed-model", Passed: false, Timestamp: time.Now().Add(-1 * time.Hour)},
+		// always-failing-model: failed both times -> no badge, this was never a regression
+		{Owner: "test", Repo: "regressed", Skill: skill, CommitSHA: "b1", Model: "always-failing-model", Passed: false, Timestamp: time.Now().Add(-2 * time.Hour)},
+		{Owner: "test", Repo: "regressed", Skill: skill, CommitSHA: "b2", Model: "always-failing-model", Passed: false, Timestamp: time.Now().Add(-1 * time.Hour)},
+	}
+	for _, r := range results {
+		if err := store.InsertResult(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
+	req := httptest.NewRequest(http.MethodGet, "/s/test/regressed/"+skill, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+
+	// Sorted alphabetically by model name: "always-failing-model" < "regressed-model".
+	alwaysFailingStart := strings.Index(body, "always-failing-model — History Trend")
+	regressedStart := strings.Index(body, "regressed-model — History Trend")
+	if regressedStart == -1 || alwaysFailingStart == -1 {
+		t.Fatalf("missing expected trend cards; body = %s", body)
+	}
+
+	alwaysFailingCard := body[alwaysFailingStart:regressedStart]
+	if strings.Contains(alwaysFailingCard, "pill pill-fail\"><span class=\"pill-dot\"></span>regressed") {
+		t.Errorf("always-failing-model's card = %q, want no regressed badge (it never passed, so this isn't a regression)", alwaysFailingCard)
+	}
+
+	// Checked via the precise badge markup, not a bare Contains("regressed")
+	// — the model name itself ("regressed-model") already contains that
+	// substring, which would make this assertion pass unconditionally
+	// regardless of whether the badge actually rendered.
+	regressedCard := body[regressedStart:]
+	if !strings.Contains(regressedCard, "pill pill-fail\"><span class=\"pill-dot\"></span>regressed") {
+		t.Errorf("regressed-model's card = %q, want a regressed badge (used to pass, now fails)", regressedCard)
+	}
+}
+
 func TestSkillPageSparklineChronologicalOrder(t *testing.T) {
 	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
 	if url == "" {
