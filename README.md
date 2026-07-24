@@ -112,7 +112,12 @@ negation insertion, sentence reordering, and unrelated leading context — and
 checks whether the skill still triggers (or doesn't) the way `triggered`
 expects. No LLM writes the paraphrases; the mutations are fixed, non-random
 string transformations, so a fuzz run costs nothing beyond the extra model
-calls it makes. Like `snapshot`, this is informational by default:
+calls it makes. Note that `regress` fuzzes every model in your configured
+matrix, so total API calls scale as `models × fuzz-enabled cases × (1 + up
+to 11 mutations)` — the worst case is a 3-sentence prompt that hits all
+four operators (1 synonym-swap + 2 negation + 5 non-identity 3-sentence
+reorderings + 3 context-prefix = 11 mutations), for 12 calls per model per
+case including the primary run. Like `snapshot`, this is informational by default:
 
 ```
 [FUZZ] 2/9 mutations flipped trigger behavior
