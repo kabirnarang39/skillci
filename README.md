@@ -156,6 +156,39 @@ skillci fuzz path/to/your-skill --model claude-sonnet-5
 or let it run automatically as part of `skillci regress` for any case that
 sets `fuzz: true` — no separate invocation needed for full coverage.
 
+Model responses aren't fully deterministic — even at low temperature,
+sampling variance can make a `triggered`/`contains`/`not_contains` check
+fail on an otherwise-healthy skill. For cases where that matters more
+than the extra API cost, `flake_retries` reruns a failing case's trigger
+checks and takes a majority verdict instead of trusting a single sample:
+
+```yaml
+name: "haiku-request-triggers"
+prompt: "Can you write me a haiku about autumn leaves?"
+skill_under_test: "haiku-writer"
+assert:
+  triggered: true
+  flake_retries: 2
+```
+
+Only fires when the FIRST attempt's trigger checks fail — a passing case
+never pays the extra cost. Up to `1 + flake_retries` total attempts are
+made, stopping early once a majority is mathematically decided (e.g. 2
+passing attempts out of 3 possible stops before the 3rd call). Budget
+assertions (`max_tokens_loaded`, `max_output_tokens`, `max_latency_ms`,
+`max_cost_usd`) are never retried — they're checked once, same as
+always, since rerunning can't change a token-count-derived cost or
+latency reading into something more "correct."
+
+An even `flake_retries` value can tie (e.g. `flake_retries: 1` → 2 total
+attempts, 1-1). A tie is informational only by default:
+
+```
+[RETRY] triggered check unstable after 2 attempts — 1/2 passed (tie), informational only unless flake_strict is set
+```
+
+Add `flake_strict: true` to fail CI on an unresolved tie instead.
+
 When a case that used to pass starts failing, `skillci bisect` finds which
 commit in your skill's own git history broke it — the same binary-search
 idea as `git bisect`, aimed at your skill instead of your code, holding the
