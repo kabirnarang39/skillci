@@ -60,7 +60,7 @@ func hasExecConcatBypass(line string) bool {
 	}
 	quote := line[loc[2]]
 	afterOpenQuote := line[loc[3]:]
-	closeIdx := strings.IndexByte(afterOpenQuote, quote)
+	closeIdx := findUnescapedQuote(afterOpenQuote, quote)
 	if closeIdx == -1 {
 		return false
 	}
@@ -69,6 +69,26 @@ func hasExecConcatBypass(line string) bool {
 		afterLiteral = afterLiteral[:parenIdx]
 	}
 	return strings.IndexByte(afterLiteral, '+') != -1
+}
+
+// findUnescapedQuote returns the index of the first occurrence of quote in s
+// that isn't itself escaped (preceded by an odd number of consecutive
+// backslashes), or -1 if none exists. strings.IndexByte alone would stop at
+// an escaped quote (e.g. \" inside a string literal) and misread the rest of
+// the literal's own content as text after the literal's close.
+func findUnescapedQuote(s string, quote byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == quote {
+			backslashes := 0
+			for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+				backslashes++
+			}
+			if backslashes%2 == 0 {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 // scanTextForAST01 scans arbitrary text content — a SKILL.md body or a
