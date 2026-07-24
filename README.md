@@ -31,11 +31,25 @@ Every other kind of software has a safety net for this — tests that fail the m
 
 ## Install
 
+**Homebrew** (macOS, Linux):
+
 ```bash
-go install github.com/kabirnarang39/skillci/cmd/skillci@latest
+brew tap kabirnarang39/skillci
+brew install --cask skillci
 ```
 
-Requires Go 1.25+. An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not for `check`, which is local-only and free).
+**Prebuilt binaries** (Linux/macOS, amd64/arm64): download from the
+[latest release](https://github.com/kabirnarang39/skillci/releases/latest)
+— each is a plain `.tar.gz`, with a `checksums.txt` alongside to verify
+against.
+
+**Go install** (any platform with Go 1.25+):
+
+```bash
+go install github.com/kabirnarang39/skillci/cmd/skillci@v0.1.0
+```
+
+An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not for `check`, which is local-only and free).
 
 ## Quick start
 

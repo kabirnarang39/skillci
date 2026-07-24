@@ -1,0 +1,73 @@
+version: 2
+
+project_name: skillci
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: skillci
+    main: ./cmd/skillci
+    binary: skillci
+    env:
+      - CGO_ENABLED=0
+    # ponytail: linux+darwin covers CI runners and dev machines (macOS
+    # Intel/ARM, Linux amd64/arm64); skillci's own tooling (entrypoint.sh)
+    # is bash-based anyway, so Windows isn't the primary target — add if a
+    # real user asks.
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: skillci
+    ids: [skillci]
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# brews was deprecated in goreleaser v2.10 (fully removed v2.16) in favor
+# of homebrew_casks, which is now the only supported way to publish a
+# precompiled-binary formula — see goreleaser.com/deprecations/#brews.
+homebrew_casks:
+  - name: skillci
+    binaries:
+      - skillci
+    repository:
+      owner: kabirnarang39
+      name: homebrew-skillci
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: "https://github.com/kabirnarang39/skillci"
+    description: "Lint, eval, and regression-test Claude Skills against a model matrix"
+    commit_author:
+      name: skillci-bot
+      email: kabir.narang@zinier.com
+    commit_msg_template: "brew cask update for {{ .ProjectName }} version {{ .Tag }}"
+    # skillci isn't signed/notarized (no Apple Developer Program
+    # membership), so macOS Gatekeeper quarantines the downloaded binary
+    # on first run without this — the standard workaround for unsigned
+    # cask binaries.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/skillci"]
+          end
