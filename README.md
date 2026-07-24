@@ -189,6 +189,51 @@ attempts, 1-1). A tie is informational only by default:
 
 Add `flake_strict: true` to fail CI on an unresolved tie instead.
 
+Deterministic assertions can't check response *quality* — tone, empathy,
+whether an explanation is actually clear. For that, `judge` sends the
+response to a separate model with a rubric of named criteria and takes
+its verdict, informational by default:
+
+```yaml
+name: "haiku-request-triggers"
+prompt: "Can you write me a haiku about autumn leaves?"
+skill_under_test: "haiku-writer"
+assert:
+  triggered: true
+judge:
+  - name: tone
+    criterion: "Is the response warm and encouraging, not clinical?"
+  - name: imagery
+    criterion: "Does the haiku use at least one concrete visual image?"
+```
+
+Requires `judge_model` in `.skillci.yaml` — deliberately a separate model
+from the ones under test, never the model judging itself, since a model
+can't reliably judge its own drift:
+
+```yaml
+judge_model: claude-opus-4-8
+```
+
+All criteria must pass for the judge step to pass. Every criterion is
+evaluated together in a single extra API call, regardless of how many
+you list. Judging only runs once every other assertion has already
+passed — it's the last check, not a substitute for `triggered`/
+`contains`. Add `judge_strict: true` to fail CI on a failing criterion;
+without it, a failure just prints:
+
+```
+[JUDGE] 1/2 criteria failed
+  tone: FAIL — reads as clinical rather than warm
+```
+
+This is deliberately the most opt-in, most secondary assertion type in
+skillci: the whole premise of this tool is catching model drift
+deterministically, and an LLM judge is the one technique that can't
+judge itself reliably when the judge model is also something that might
+drift. Reach for the deterministic assertions first; add `judge` only
+for what genuinely can't be checked any other way.
+
 When a case that used to pass starts failing, `skillci bisect` finds which
 commit in your skill's own git history broke it — the same binary-search
 idea as `git bisect`, aimed at your skill instead of your code, holding the
