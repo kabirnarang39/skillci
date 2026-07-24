@@ -96,10 +96,16 @@ func scanTextForAST03(file, content string) []Issue {
 			if atIdx := strings.LastIndex(host, "@"); atIdx != -1 {
 				host = host[atIdx+1:]
 			}
-			if idx := strings.IndexAny(host, ":"); idx != -1 {
+			// Bracketed IPv6 loopback ([::1], optionally with a :port after
+			// the closing bracket) has its own colons, so it must be
+			// recognized before the generic first-colon port-strip below
+			// would otherwise mangle it into "[".
+			if host == "[::1]" || strings.HasPrefix(host, "[::1]:") {
+				host = "::1"
+			} else if idx := strings.IndexAny(host, ":"); idx != -1 {
 				host = host[:idx]
 			}
-			if host != "localhost" && host != "127.0.0.1" {
+			if host != "localhost" && host != "127.0.0.1" && host != "::1" {
 				issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast03-unrestricted-network-call", Msg: "line makes a network call to a non-localhost host"})
 			}
 		}
@@ -318,6 +324,30 @@ func scanReferencedFileContent(dir, refPath string) []Issue {
 		return nil
 	}
 	full := filepath.Join(dir, refPath)
+	// refPath already passed pathTraversalIssue's textual containment
+	// check, but that only reasons about the path string — a symlink at
+	// full can still resolve to a target outside dir. Resolve it and
+	// re-check containment before reading content, so a symlink can't be
+	// used to smuggle an out-of-tree file through the content scanner.
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return nil
+	}
+	// Resolve dir too before comparing — on macOS a t.TempDir() (and
+	// /tmp generally) lives under a symlink (e.g. /var -> /private/var),
+	// so comparing an unresolved dir against a resolved full would flag
+	// every in-tree file as "escaping".
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		resolvedDir = dir
+	}
+	if rel, err := filepath.Rel(resolvedDir, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return nil
+	}
+	// full (not resolved) is kept for Stat/ReadFile/issue attribution below
+	// — os.Stat/os.ReadFile already follow the symlink transparently to
+	// read the same (now containment-checked) content, and issues should
+	// still be attributed to the path as written in SKILL.md.
 	info, err := os.Stat(full)
 	if err != nil || info.Size() > maxScanBytes {
 		return nil
