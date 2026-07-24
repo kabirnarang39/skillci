@@ -229,6 +229,35 @@ network and inference variance, not what the skill actually did, so an
 exceeded cap is informational only — printed, not failed — unless you also
 set `latency_strict: true`.
 
+Eval cases can also carry free-form `dimensions` for slicing results — e.g.
+a case representing your enterprise-tier traffic or a specific language
+variant:
+
+```yaml
+name: enterprise-billing-question
+prompt: "..."
+assert:
+  triggered: true
+dimensions:
+  segment: enterprise
+  language: es
+```
+
+By default this only affects reporting — `skillci regress` groups its
+output by dimension (`--- by dimension ---`) so a cratering segment is
+visible at a glance instead of buried in a flat case list. To make a
+specific slice's failures always fail CI regardless of the global
+`fail_on` policy, name it in `.skillci.yaml`:
+
+```yaml
+fail_on: triggered_only
+strict_dimensions:
+  segment: [enterprise]
+```
+
+Any case tagged `segment: enterprise` now fails CI on any failure, even
+though the rest of the suite is gated more loosely.
+
 ## GitHub Actions
 
 ```yaml
