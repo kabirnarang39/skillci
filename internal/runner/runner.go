@@ -39,6 +39,17 @@ type Result struct {
 	FlakeVerdict        string
 	FlakeAttemptsPassed int
 	FlakeAttemptsTotal  int
+	// JudgeFindings is nil unless the case has Judge criteria AND the
+	// judge step actually ran (every other assertion passed and no flake
+	// retry fired) — see the judge block in RunCase.
+	JudgeFindings []JudgeFinding
+}
+
+// JudgeFinding is one criterion's verdict from the judge model.
+type JudgeFinding struct {
+	Name   string
+	Passed bool
+	Reason string
 }
 
 type skillMeta struct {
@@ -194,8 +205,101 @@ If, given the user's message, you would invoke this skill, begin your response w
 		}
 	}
 
+	// Judging only runs once every other assertion has already passed and
+	// no flake retry fired — same reasoning as the snapshot guard above:
+	// attempt 1's content is never a reliable representative sample once
+	// retries were needed, and there's no point spending a judge call on
+	// a response that already failed for an unrelated reason.
+	if len(result.Failures) == 0 && result.FlakeVerdict == "" && len(c.Assert.Judge) > 0 {
+		if judgeModel == "" {
+			return Result{}, fmt.Errorf("case %q uses judge criteria but no judge_model is configured — add judge_model: to .skillci.yaml", c.Name)
+		}
+		findings, jerr := runJudge(ctx, client, judgeModel, content, c.Assert.Judge)
+		if jerr != nil {
+			return Result{}, jerr
+		}
+		result.JudgeFindings = findings
+		failed := 0
+		for _, f := range findings {
+			if !f.Passed {
+				failed++
+			}
+		}
+		if failed > 0 && c.Assert.JudgeStrict != nil && *c.Assert.JudgeStrict {
+			result.Failures = append(result.Failures, fmt.Sprintf("judge: %d/%d criteria failed", failed, len(findings)))
+		}
+	}
+
 	result.Passed = len(result.Failures) == 0
 	return result, nil
+}
+
+const judgeMarkerPrefix = "SKILLCI_JUDGE:"
+
+// runJudge sends every criterion together in one prompt to judgeModel and
+// parses its structured per-criterion verdict lines — exactly one API
+// call regardless of how many criteria are configured.
+func runJudge(ctx context.Context, client *anthropic.Client, judgeModel, response string, criteria []evalspec.JudgeCriterion) ([]JudgeFinding, error) {
+	systemPrompt := `You are an impartial judge evaluating an AI assistant's response against a list of criteria. For each criterion, decide PASS or FAIL and respond with exactly one line per criterion in this format:
+
+SKILLCI_JUDGE: <criterion name> = PASS
+SKILLCI_JUDGE: <criterion name> = FAIL: <short reason>
+
+Output nothing else — no preamble, no summary, just one SKILLCI_JUDGE line per criterion, in the order given.`
+
+	var userPrompt strings.Builder
+	userPrompt.WriteString("Criteria:\n")
+	for _, c := range criteria {
+		fmt.Fprintf(&userPrompt, "- %s: %s\n", c.Name, c.Criterion)
+	}
+	userPrompt.WriteString("\nResponse to evaluate:\n")
+	userPrompt.WriteString(response)
+
+	msg, err := client.Send(ctx, judgeModel, systemPrompt, userPrompt.String())
+	if err != nil {
+		return nil, err
+	}
+	return parseJudgeVerdicts(msg.Text, criteria), nil
+}
+
+// parseJudgeVerdicts matches each configured criterion's name against a
+// SKILLCI_JUDGE: <name> = PASS|FAIL(: reason)? line in text. A criterion
+// with no matching line — missing or malformed — is treated as FAIL with
+// an explanatory reason, never silently dropped from the result.
+func parseJudgeVerdicts(text string, criteria []evalspec.JudgeCriterion) []JudgeFinding {
+	verdicts := make(map[string]JudgeFinding, len(criteria))
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, judgeMarkerPrefix) {
+			continue
+		}
+		rest := strings.TrimSpace(strings.TrimPrefix(line, judgeMarkerPrefix))
+		name, verdict, ok := strings.Cut(rest, "=")
+		if !ok {
+			continue
+		}
+		name = strings.TrimSpace(name)
+		verdict = strings.TrimSpace(verdict)
+		switch {
+		case verdict == "PASS":
+			verdicts[name] = JudgeFinding{Name: name, Passed: true}
+		case strings.HasPrefix(verdict, "FAIL:"):
+			reason := strings.TrimSpace(strings.TrimPrefix(verdict, "FAIL:"))
+			verdicts[name] = JudgeFinding{Name: name, Passed: false, Reason: reason}
+		case verdict == "FAIL":
+			verdicts[name] = JudgeFinding{Name: name, Passed: false, Reason: "no reason given"}
+		}
+	}
+
+	findings := make([]JudgeFinding, len(criteria))
+	for i, c := range criteria {
+		if f, ok := verdicts[c.Name]; ok {
+			findings[i] = f
+		} else {
+			findings[i] = JudgeFinding{Name: c.Name, Passed: false, Reason: "judge did not return a verdict for this criterion"}
+		}
+	}
+	return findings
 }
 
 // checkTriggerAssertions checks Triggered/Contains/NotContains — the

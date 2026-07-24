@@ -1132,6 +1132,316 @@ func TestRunCaseFlakeRetriesExplicitZeroBehavesLikeUnset(t *testing.T) {
 	}
 }
 
+// judgeStubServer returns a stub that replies with the case's own
+// trigger-marker text for every call except calls where the request's
+// model field equals judgeModel, which get judgeReplyText instead — this
+// lets a single stub server distinguish the primary call from the judge
+// call by which model was actually requested, proving TestRunCaseJudgeUsesSeparateModelFromCaseModel's claim.
+func judgeStubServer(t *testing.T, primaryReplyText, judgeModel, judgeReplyText string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var requestedModels []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		requestedModels = append(requestedModels, req.Model)
+
+		text := primaryReplyText
+		if req.Model == judgeModel {
+			text = judgeReplyText
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	return srv, &requestedModels
+}
+
+func TestRunCaseJudgeAllCriteriaPass(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nHello, thanks for reaching out!",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = PASS\nSKILLCI_JUDGE: length = PASS",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is the response friendly?"},
+				{Name: "length", Criterion: "Is the response short?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if len(result.JudgeFindings) != 2 {
+		t.Fatalf("JudgeFindings = %v, want 2 entries", result.JudgeFindings)
+	}
+	for _, f := range result.JudgeFindings {
+		if !f.Passed {
+			t.Errorf("finding %+v, want Passed=true", f)
+		}
+	}
+}
+
+func TestRunCaseJudgeFailureNonStrictStillPasses(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nDo it yourself.",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = FAIL: response is curt and dismissive",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true — non-strict judge failure must not fail the case; Failures = %v", result.Failures)
+	}
+	if len(result.JudgeFindings) != 1 || result.JudgeFindings[0].Passed {
+		t.Fatalf("JudgeFindings = %v, want 1 failing entry", result.JudgeFindings)
+	}
+	if result.JudgeFindings[0].Reason != "response is curt and dismissive" {
+		t.Errorf("Reason = %q, want the judge's stated reason", result.JudgeFindings[0].Reason)
+	}
+}
+
+func TestRunCaseJudgeFailureStrictFails(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nDo it yourself.",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = FAIL: response is curt and dismissive",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:   truePtr(),
+			Judge:       []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+			JudgeStrict: truePtr(),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — judge_strict must fail the case on a failing criterion")
+	}
+}
+
+func TestRunCaseJudgeMissingJudgeModelErrors(t *testing.T) {
+	srv, _ := judgeStubServer(t, "SKILLCI_TRIGGERED: true\nHi.", "", "")
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+		},
+	}
+
+	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	if err == nil {
+		t.Fatal("RunCase() error = nil, want an error — case uses judge criteria but no judge_model was passed")
+	}
+	if !strings.Contains(err.Error(), "judge_model") {
+		t.Errorf("error = %q, want it to mention judge_model", err.Error())
+	}
+}
+
+func TestRunCaseJudgeMalformedResponseLineTreatedAsFail(t *testing.T) {
+	// The judge's response only returns a verdict for "tone", never
+	// mentioning "length" at all — the missing criterion must be treated
+	// as a fail, not silently dropped or crash the parser.
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nHi there!",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = PASS\nSome unrelated commentary the judge added.",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is the response friendly?"},
+				{Name: "length", Criterion: "Is the response short?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if len(result.JudgeFindings) != 2 {
+		t.Fatalf("JudgeFindings = %v, want 2 entries (one per configured criterion, even though the judge only answered one)", result.JudgeFindings)
+	}
+	var lengthFinding *JudgeFinding
+	for i := range result.JudgeFindings {
+		if result.JudgeFindings[i].Name == "length" {
+			lengthFinding = &result.JudgeFindings[i]
+		}
+	}
+	if lengthFinding == nil {
+		t.Fatal("no finding for the length criterion at all")
+	}
+	if lengthFinding.Passed {
+		t.Error("length finding Passed = true, want false — the judge never returned a verdict for it")
+	}
+}
+
+func TestRunCaseJudgeSkippedWhenFlakeRetriesFired(t *testing.T) {
+	// A case with BOTH flake_retries and judge criteria: attempt 1 fails
+	// its trigger check, attempts 2-3 pass, confirmed_pass. Even though
+	// the case ends up Passed=true, the judge call must never fire —
+	// attempt 1's content isn't representative once retries were needed
+	// (same reasoning as the snapshot guard).
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		text := "SKILLCI_TRIGGERED: false"
+		if callCount >= 2 {
+			text = "SKILLCI_TRIGGERED: true\nHi!"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-flake-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:    truePtr(),
+			FlakeRetries: intPtr(2),
+			Judge:        []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FlakeVerdict != "confirmed_pass" {
+		t.Fatalf("FlakeVerdict = %q, want confirmed_pass", result.FlakeVerdict)
+	}
+	if result.JudgeFindings != nil {
+		t.Errorf("JudgeFindings = %v, want nil — judge must be skipped whenever a flake retry fired", result.JudgeFindings)
+	}
+	// Sequence is fail, pass, pass (callCount 1/2/3) — a 1-1 split after 2
+	// attempts is NOT yet decided (1 remaining attempt could still tie or
+	// flip it), so all 3 flake attempts are genuinely made before the
+	// vote resolves to confirmed_pass. This mirrors flake-retry's own
+	// TestRunCaseFlakeRetriesConfirmedPassAfterInitialFailure exactly —
+	// do not "simplify" this to 2, that was verified wrong by hand.
+	if callCount != 3 {
+		t.Errorf("callCount = %d, want 3 (all 3 flake attempts needed to reach a majority) — and critically, no 4th call for a judge step, since the judge must be skipped entirely", callCount)
+	}
+}
+
+func TestRunCaseJudgeSkippedWhenOtherAssertionFails(t *testing.T) {
+	srv, _ := judgeStubServer(t, "SKILLCI_TRIGGERED: false", "claude-opus-4-8", "SKILLCI_JUDGE: tone = PASS")
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false (did not trigger as asserted)")
+	}
+	if result.JudgeFindings != nil {
+		t.Errorf("JudgeFindings = %v, want nil — judge must be skipped when an unrelated assertion already failed", result.JudgeFindings)
+	}
+}
+
+func TestRunCaseJudgeUsesSeparateModelFromCaseModel(t *testing.T) {
+	srv, requestedModels := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nHi there!",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = PASS",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+		},
+	}
+
+	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if len(*requestedModels) != 2 {
+		t.Fatalf("requestedModels = %v, want exactly 2 calls (primary + judge)", *requestedModels)
+	}
+	if (*requestedModels)[0] != "claude-sonnet-5" {
+		t.Errorf("first call model = %q, want claude-sonnet-5 (the case's own model)", (*requestedModels)[0])
+	}
+	if (*requestedModels)[1] != "claude-opus-4-8" {
+		t.Errorf("second call model = %q, want claude-opus-4-8 (the configured judge model)", (*requestedModels)[1])
+	}
+}
+
 func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
 	// The trigger assertion passes; only a budget assertion (max_tokens_loaded)
 	// fails. flake_retries is set, but must have no effect — budget
