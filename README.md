@@ -524,7 +524,7 @@ SkillCI's core differentiator is the **self-growing eval loop**: when a regressi
 
 ## Status
 
-Early — the core CLI (lint/eval/regress/self-growing loop) is stable and tested; the dashboard is functional but newer. Issues and PRs welcome.
+Early — the core CLI (lint/eval/regress/self-growing loop) is stable and tested; the dashboard is functional but newer. Issues and PRs welcome. See [CHANGELOG.md](CHANGELOG.md) for release notes and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## License
 
