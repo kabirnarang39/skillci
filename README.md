@@ -185,6 +185,39 @@ message: tighten haiku-writer's tone guidance
 whenever it detects a new regression, so you don't need to remember the
 command yourself.
 
+For cost and latency budgets, three more assertions are available:
+
+```yaml
+name: "cost-budget-case"
+prompt: "Write a haiku about autumn."
+skill_under_test: "haiku-writer"
+assert:
+  triggered: true
+  max_output_tokens: 500
+  max_latency_ms: 3000
+  max_cost_usd: 0.01
+```
+
+`max_output_tokens` and `max_cost_usd` are hard caps — like `max_tokens_loaded`,
+exceeding either fails the case immediately. `max_cost_usd` needs a pricing
+entry in `.skillci.yaml` — skillci never hardcodes or guesses prices, since
+Anthropic can reprice without notice:
+
+```yaml
+pricing:
+  claude-sonnet-5:
+    input_per_million: 3.0
+    output_per_million: 15.0
+```
+
+A case asserting `max_cost_usd` for a model with no pricing entry fails
+loudly, naming the missing model, rather than silently skipping the check.
+
+`max_latency_ms` is the one exception to the hard-cap rule: latency reflects
+network and inference variance, not what the skill actually did, so an
+exceeded cap is informational only — printed, not failed — unless you also
+set `latency_strict: true`.
+
 ## GitHub Actions
 
 ```yaml
