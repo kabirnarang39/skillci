@@ -267,6 +267,125 @@ func TestShouldFailCITriggeredOnlyPassesWhenMatches(t *testing.T) {
 	}
 }
 
+func TestMatchesStrictDimensionsMatchesOnAnyPair(t *testing.T) {
+	strict := map[string][]string{"segment": {"enterprise", "government"}}
+	if !matchesStrictDimensions(map[string]string{"segment": "enterprise"}, strict) {
+		t.Error("matchesStrictDimensions() = false, want true for an exact key/value match")
+	}
+	if !matchesStrictDimensions(map[string]string{"segment": "government", "language": "es"}, strict) {
+		t.Error("matchesStrictDimensions() = false, want true when ANY dimension pair matches")
+	}
+}
+
+func TestMatchesStrictDimensionsNoMatch(t *testing.T) {
+	strict := map[string][]string{"segment": {"enterprise"}}
+	if matchesStrictDimensions(map[string]string{"segment": "free"}, strict) {
+		t.Error("matchesStrictDimensions() = true, want false — value not in the strict list")
+	}
+	if matchesStrictDimensions(map[string]string{"language": "es"}, strict) {
+		t.Error("matchesStrictDimensions() = true, want false — key not present in dims at all")
+	}
+	if matchesStrictDimensions(nil, strict) {
+		t.Error("matchesStrictDimensions() = true, want false for a case with no dimensions")
+	}
+	if matchesStrictDimensions(map[string]string{"segment": "enterprise"}, nil) {
+		t.Error("matchesStrictDimensions() = true, want false when no strict_dimensions configured at all")
+	}
+}
+
+// TestRunMatrixStrictDimensionFailOverridesLooseFailOn is the end-to-end
+// reachability test this task's brief requires: it traces a real
+// strict_dimensions config all the way through RunMatrix into
+// ShouldFailCI, proving the gate actually fires through the real code
+// path — not just that matchesStrictDimensions is correct in isolation.
+// FailOn is deliberately set to the loosest policy ("triggered_only") and
+// the case's Triggered assertion is left unset (nil) — a Contains
+// assertion supplies the (unrelated to Triggered) reason the case fails
+// instead, so the ONLY thing that could make ShouldFailCI return true
+// under triggered_only is the strict-dimension path. (The brief's literal
+// test used Assert.Triggered: truePtr() against a server that always
+// returns "SKILLCI_TRIGGERED: false" — that independently satisfies
+// triggered_only's own mismatch check, so the test would pass even with
+// the StrictDimensionFail override deleted entirely. Verified empirically
+// by removing the override and re-running: it still passed. Swapped to
+// Contains to actually isolate the code path under test.)
+func TestRunMatrixStrictDimensionFailOverridesLooseFailOn(t *testing.T) {
+	srv := stubServerAlwaysFails(t)
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:       "enterprise-case",
+			Prompt:     "review this",
+			Assert:     evalspec.Assertions{Contains: []string{"nonexistent-marker-xyz"}},
+			Dimensions: map[string]string{"segment": "enterprise"},
+		},
+	}
+	cfg := config.Config{
+		Models: []string{"claude-sonnet-5"},
+		FailOn: "triggered_only",
+		StrictDimensions: map[string][]string{
+			"segment": {"enterprise"},
+		},
+	}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 1 {
+		t.Fatalf("Outcomes = %+v, want 1", report.Outcomes)
+	}
+	if !report.Outcomes[0].StrictDimensionFail {
+		t.Fatal("StrictDimensionFail = false, want true — case matches strict_dimensions and failed")
+	}
+	if !report.ShouldFailCI(cfg.FailOn) {
+		t.Error("ShouldFailCI(triggered_only) = false, want true — a strict_dimensions match must fail CI regardless of the configured (loose) fail_on policy")
+	}
+}
+
+func TestRunMatrixNoStrictDimensionFailWhenCaseDoesNotMatch(t *testing.T) {
+	// Same failing case, but its dimension value isn't in strict_dimensions
+	// — must NOT force a CI failure under the loose triggered_only policy,
+	// and Triggered matches (true==true) so triggered_only doesn't fail it either.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:       "free-case",
+			Prompt:     "review this",
+			Assert:     evalspec.Assertions{Triggered: truePtr()},
+			Dimensions: map[string]string{"segment": "free"},
+		},
+	}
+	cfg := config.Config{
+		Models:           []string{"claude-sonnet-5"},
+		FailOn:           "triggered_only",
+		StrictDimensions: map[string][]string{"segment": {"enterprise"}},
+	}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if report.Outcomes[0].StrictDimensionFail {
+		t.Error("StrictDimensionFail = true, want false — segment=free doesn't match strict_dimensions[segment]=[enterprise]")
+	}
+	if report.ShouldFailCI(cfg.FailOn) {
+		t.Error("ShouldFailCI(triggered_only) = true, want false — no strict match, and Triggered assertion is satisfied")
+	}
+}
+
 func TestShouldFailCITriggeredOnlyIgnoresNoAssertion(t *testing.T) {
 	// Case: no Triggered assertion (nil) should not affect verdict
 	report := MatrixReport{Outcomes: []Outcome{

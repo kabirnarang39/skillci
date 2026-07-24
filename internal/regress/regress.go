@@ -25,6 +25,25 @@ type Outcome struct {
 	Model           string
 	Result          runner.Result
 	IsNewRegression bool
+	// StrictDimensionFail is true when Case.Dimensions matches any
+	// key/value pair in config.Config.StrictDimensions AND the case
+	// failed — ShouldFailCI treats this as a hard CI failure regardless
+	// of the configured FailOn policy.
+	StrictDimensionFail bool
+}
+
+// matchesStrictDimensions reports whether dims matches ANY key/value pair
+// configured in strict — OR across configured pairs, exact string
+// equality, no wildcards. A nil/empty dims or strict never matches.
+func matchesStrictDimensions(dims map[string]string, strict map[string][]string) bool {
+	for key, values := range dims {
+		for _, strictValue := range strict[key] {
+			if values == strictValue {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type MatrixReport struct {
@@ -34,6 +53,9 @@ type MatrixReport struct {
 
 func (r MatrixReport) ShouldFailCI(failOn string) bool {
 	for _, o := range r.Outcomes {
+		if o.StrictDimensionFail {
+			return true
+		}
 		switch failOn {
 		case "any_fail":
 			if !o.Result.Passed {
@@ -99,6 +121,7 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 
 			report.Outcomes = append(report.Outcomes, Outcome{
 				Case: c, Model: model, Result: result, IsNewRegression: isNewRegression,
+				StrictDimensionFail: !result.Passed && matchesStrictDimensions(c.Dimensions, cfg.StrictDimensions),
 			})
 		}
 	}
