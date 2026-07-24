@@ -33,6 +33,18 @@ func RepoRoot(dir string) (string, error) {
 	return strings.TrimSpace(out), nil
 }
 
+// CurrentBranch returns the current branch's short name, or the literal
+// string "HEAD" when dir's checkout is in detached-HEAD state (there is no
+// branch name to return). A read, like RevParseHEAD — it never mutates
+// HEAD or the working tree.
+func CurrentBranch(dir string) (string, error) {
+	out, err := runGit(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // LogPaths returns commit SHAs in the range (fromSHA, toSHA] — excluding
 // fromSHA, including toSHA — that touched any of paths, oldest first.
 func LogPaths(dir, fromSHA, toSHA string, paths []string) ([]string, error) {

@@ -111,6 +111,23 @@ skillci accept unrelated-request-should-not-trigger-generated-claude-sonnet-5
 ```
 
 promotes it into `evals/`, so it's a tracked regression guard from then on.
+Pass `--open-pr` to skip the manual `git add`/commit step too: skillci
+commits the generated case(s) onto a new branch, pushes it, and opens a
+pull request against the branch the run started from, so review happens in
+your normal PR flow instead of a file someone has to notice in the
+workspace:
+
+```bash
+skillci regress --open-pr
+```
+
+Requires `GITHUB_REPOSITORY` and `GITHUB_TOKEN` (a token with `contents:
+write` and `pull-requests: write` on the repo — `secrets.GITHUB_TOKEN` in
+a GitHub Actions workflow already has both if the job's `permissions:`
+block grants them). A failure here (missing token, push rejected, API
+error) is reported as a warning, never as a CI failure — the generated
+case file is already written either way.
+
 The generated file also carries the failure context that produced it — model,
 detection time, and the model's actual response — as a YAML comment header,
 so a reviewer deciding whether to accept it doesn't have to go dig that back

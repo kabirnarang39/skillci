@@ -56,6 +56,48 @@ func TestRevParseHEAD(t *testing.T) {
 	}
 }
 
+func TestCurrentBranchReturnsBranchName(t *testing.T) {
+	dir := initRepo(t)
+	commitFile(t, dir, "a.txt", "hello", "initial")
+	want, err := runGitOutput(t, dir, "branch", "--show-current")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := CurrentBranch(dir)
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v", err)
+	}
+	if got != want {
+		t.Errorf("CurrentBranch() = %q, want %q", got, want)
+	}
+}
+
+func TestCurrentBranchReturnsHEADWhenDetached(t *testing.T) {
+	dir := initRepo(t)
+	sha := commitFile(t, dir, "a.txt", "hello", "initial")
+	runGitT(t, dir, "checkout", "-q", sha)
+
+	got, err := CurrentBranch(dir)
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v", err)
+	}
+	if got != "HEAD" {
+		t.Errorf("CurrentBranch() = %q, want %q (detached HEAD)", got, "HEAD")
+	}
+}
+
+func runGitOutput(t *testing.T, dir string, args ...string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func TestRepoRootFromSubdirectory(t *testing.T) {
 	dir := initRepo(t)
 	commitFile(t, dir, "skill/SKILL.md", "content", "initial")

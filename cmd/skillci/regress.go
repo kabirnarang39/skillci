@@ -13,15 +13,17 @@ import (
 	"github.com/kabirnarang39/skillci/internal/badge"
 	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/githubpr"
 	"github.com/kabirnarang39/skillci/internal/gitutil"
 	"github.com/kabirnarang39/skillci/internal/history"
+	"github.com/kabirnarang39/skillci/internal/prbranch"
 	"github.com/kabirnarang39/skillci/internal/regress"
 	"github.com/kabirnarang39/skillci/internal/upload"
 	"github.com/spf13/cobra"
 )
 
 func newRegressCmd() *cobra.Command {
-	var uploadFlag, autoBisectFlag bool
+	var uploadFlag, autoBisectFlag, openPRFlag bool
 	cmd := &cobra.Command{
 		Use:   "regress [path]",
 		Short: "Run the eval suite across the configured model matrix and fail CI on new regressions",
@@ -118,6 +120,9 @@ func newRegressCmd() *cobra.Command {
 				}
 				for _, p := range paths {
 					fmt.Fprintf(cmd.OutOrStdout(), "proposed new eval case: %s (run `skillci accept <name>` to keep it)\n", p)
+				}
+				if openPRFlag {
+					openGeneratedCasePR(cmd, dir, paths)
 				}
 			} else {
 				// still ensure the directory exists so tooling/tests can rely on its presence
@@ -235,7 +240,60 @@ func newRegressCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&uploadFlag, "upload", false, "upload results to the SkillCI dashboard")
 	cmd.Flags().BoolVar(&autoBisectFlag, "auto-bisect", false, "automatically run skillci bisect on every new regression instead of just printing the suggested command")
+	cmd.Flags().BoolVar(&openPRFlag, "open-pr", false, "commit generated eval case(s) to a new branch and open a pull request, instead of just writing a file the user has to notice and commit themselves")
 	return cmd
+}
+
+// openGeneratedCasePR commits the just-written generated-case files onto a
+// new branch, pushes it, and opens a pull request against the branch this
+// run started from. Best-effort: any failure (missing GITHUB_TOKEN, not a
+// git repo, push rejected, API error) is reported as a warning, never as
+// regress's own error — --open-pr is a convenience on top of the generated
+// files, which are already written and usable either way.
+func openGeneratedCasePR(cmd *cobra.Command, dir string, paths []string) {
+	out := cmd.OutOrStdout()
+
+	owner, repoName := parseOwnerRepo(os.Getenv("GITHUB_REPOSITORY"))
+	token := os.Getenv("GITHUB_TOKEN")
+	if owner == "" || repoName == "" || token == "" {
+		fmt.Fprintln(out, "warning: --open-pr requires GITHUB_REPOSITORY and GITHUB_TOKEN to be set — skipping")
+		return
+	}
+
+	// GITHUB_REF_NAME is the branch name GitHub Actions checks out under
+	// (actions/checkout leaves the workspace in detached-HEAD state, so
+	// gitutil.CurrentBranch alone can't recover a branch name there); fall
+	// back to it for a real local branch checkout.
+	baseBranch := os.Getenv("GITHUB_REF_NAME")
+	if baseBranch == "" {
+		if b, err := gitutil.CurrentBranch(dir); err == nil && b != "HEAD" {
+			baseBranch = b
+		}
+	}
+	if baseBranch == "" {
+		fmt.Fprintln(out, "warning: --open-pr could not determine a base branch (detached HEAD and GITHUB_REF_NAME not set) — skipping")
+		return
+	}
+
+	branchName := fmt.Sprintf("skillci/generated-eval-%d", time.Now().UnixNano())
+	commitMsg := "skillci: add generated eval case(s) from a caught regression"
+	if err := prbranch.Push(dir, paths, commitMsg, "origin", branchName); err != nil {
+		fmt.Fprintf(out, "warning: --open-pr failed to push branch: %v\n", err)
+		return
+	}
+
+	apiBaseURL := os.Getenv("SKILLCI_GITHUB_API_URL")
+	if apiBaseURL == "" {
+		apiBaseURL = "https://api.github.com"
+	}
+	title := "skillci: add generated eval case(s)"
+	body := "Automatically opened by `skillci regress --open-pr` after catching an uncovered failure with no prior test coverage. Review the generated case(s) in this PR before merging with `skillci accept`."
+	url, err := githubpr.Open(context.Background(), apiBaseURL, token, owner, repoName, branchName, baseBranch, title, body)
+	if err != nil {
+		fmt.Fprintf(out, "warning: --open-pr failed to open the pull request: %v\n", err)
+		return
+	}
+	fmt.Fprintf(out, "opened pull request: %s\n", url)
 }
 
 func parseOwnerRepo(githubRepository string) (owner, repo string) {

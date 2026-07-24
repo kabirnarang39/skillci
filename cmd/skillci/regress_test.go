@@ -251,6 +251,103 @@ func TestRegressCommandAutoBisectFindsCulpritOnNewRegression(t *testing.T) {
 	}
 }
 
+// setupSkillWithCaseAndGitRemote is setupSkillWithCase's fixture, made into
+// a real git repo with a bare "origin" remote it can actually push
+// branches to — entirely on local disk, no network access.
+func setupSkillWithCaseAndGitRemote(t *testing.T) (dir string) {
+	t.Helper()
+	dir = setupSkillWithCase(t)
+	bareDir := t.TempDir()
+	runGitCmd(t, bareDir, "init", "-q", "--bare")
+	runGitCmd(t, dir, "init", "-q", "-b", "main")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "add", ".")
+	runGitCmd(t, dir, "commit", "-q", "-m", "initial")
+	runGitCmd(t, dir, "remote", "add", "origin", bareDir)
+	runGitCmd(t, dir, "push", "-q", "origin", "main")
+	return dir
+}
+
+// TestRegressCommandOpenPRPushesBranchAndOpensPullRequest is the end-to-end
+// reachability test for --open-pr: it runs the real regress command
+// against a real git repo with a real (local, bare) remote and a stub
+// GitHub API server, and checks that the generated case actually lands on
+// a real pushed branch and that the pull-request request skillci sends
+// matches what got pushed — not just that WriteGeneratedCases/prbranch/
+// githubpr behave correctly in isolation.
+func TestRegressCommandOpenPRPushesBranchAndOpensPullRequest(t *testing.T) {
+	anthropicSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: false"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer anthropicSrv.Close()
+
+	var prHead, prBase string
+	githubSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/acme/widget/pulls" {
+			t.Errorf("PR request path = %q, want /repos/acme/widget/pulls", r.URL.Path)
+		}
+		var body struct{ Head, Base string }
+		json.NewDecoder(r.Body).Decode(&body)
+		prHead, prBase = body.Head, body.Base
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"html_url": "https://github.com/acme/widget/pull/7"})
+	}))
+	defer githubSrv.Close()
+
+	dir := setupSkillWithCaseAndGitRemote(t) // case c1 asserts triggered: true, no prior history
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", anthropicSrv.URL)
+	t.Setenv("GITHUB_REPOSITORY", "acme/widget")
+	t.Setenv("GITHUB_TOKEN", "test-gh-token")
+	t.Setenv("SKILLCI_GITHUB_API_URL", githubSrv.URL)
+	t.Setenv("GITHUB_REF_NAME", "")
+	t.Setenv("GITHUB_SHA", "")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--open-pr", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	if !strings.Contains(out.String(), "opened pull request: https://github.com/acme/widget/pull/7") {
+		t.Errorf("output = %q, want it to report the opened pull request URL", out.String())
+	}
+	if prBase != "main" {
+		t.Errorf("PR base = %q, want main (resolved from the local checkout, GITHUB_REF_NAME unset)", prBase)
+	}
+	if !strings.HasPrefix(prHead, "skillci/generated-eval-") {
+		t.Errorf("PR head = %q, want a skillci/generated-eval-* branch", prHead)
+	}
+
+	// The bare "origin" remote must actually have received the branch and
+	// commit — not just that skillci printed a URL a stub server handed back.
+	branches, err := exec.Command("git", "-C", dir, "ls-remote", "--heads", "origin").CombinedOutput()
+	if err != nil {
+		t.Fatalf("git ls-remote error = %v: %s", err, branches)
+	}
+	if !strings.Contains(string(branches), "refs/heads/"+prHead) {
+		t.Errorf("remote branches = %q, want refs/heads/%s to be present", branches, prHead)
+	}
+
+	// The local checkout must be restored to main, not left on the
+	// throwaway branch.
+	currentBranch, err := gitutil.CurrentBranch(dir)
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v", err)
+	}
+	if currentBranch != "main" {
+		t.Errorf("local branch after --open-pr = %q, want restored to main", currentBranch)
+	}
+}
+
 func TestRegressCommandNoPriorHistoryDoesNotFailCI(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{
