@@ -78,6 +78,14 @@ skillci eval path/to/your-skill --model claude-sonnet-5
 skillci regress path/to/your-skill
 ```
 
+What actually fails CI is controlled by `fail_on` in `.skillci.yaml` — three values:
+
+- **`regression`** (the default) — fail only on a case+model that used to pass and now doesn't. A case with no prior recorded run never fails CI on its own; it gets proposed as a generated case instead (see below).
+- **`any_fail`** — fail on any failing case+model, regardless of history. Stricter; useful once a skill's suite is mature enough that every failure should be treated as a real problem.
+- **`triggered_only`** — fail only when a case's `triggered` assertion doesn't match (ignores `contains`/budget/snapshot/fuzz/etc. failures entirely). Useful early on, when trigger accuracy is the only thing you're confident enough in to gate on.
+
+A `strict_dimensions` match (see below) always fails CI regardless of which `fail_on` policy is set.
+
 An eval case (`evals/*.yaml`) looks like this:
 
 ```yaml
