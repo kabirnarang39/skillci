@@ -309,6 +309,52 @@ func TestLintEvalsNoWarningWhenFuzzAndFuzzStrictSet(t *testing.T) {
 	}
 }
 
+func TestLintEvalsFlagsFuzzLLMWithoutFuzz(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  fuzz_llm: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "fuzz-llm-without-fuzz" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a fuzz-llm-without-fuzz issue", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenFuzzAndFuzzLLMSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  fuzz: true\n  fuzz_llm: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "fuzz-llm-without-fuzz" {
+			t.Errorf("issues = %+v, want no fuzz-llm-without-fuzz issue when fuzz is also set", issues)
+		}
+	}
+}
+
 func TestLintEvalsFlagsSnapshotStrictWithoutSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {

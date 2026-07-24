@@ -115,3 +115,24 @@ func TestGenerateUnmutatablePromptStillReturnsContextPrefixOnly(t *testing.T) {
 		t.Error("Generate(\"Autumn.\") returned no mutations, want at least negation+context-prefix")
 	}
 }
+
+func TestWrapLLMParaphrasesProducesOneMutationPerString(t *testing.T) {
+	muts := WrapLLMParaphrases([]string{"could you write this up", "put together a haiku"})
+	if len(muts) != 2 {
+		t.Fatalf("len(muts) = %d, want 2", len(muts))
+	}
+	for i, m := range muts {
+		if m.Operator != "llm-paraphrase" {
+			t.Errorf("muts[%d].Operator = %q, want llm-paraphrase", i, m.Operator)
+		}
+	}
+	if muts[0].Prompt != "could you write this up" || muts[1].Prompt != "put together a haiku" {
+		t.Errorf("muts = %+v, want prompts preserved in order", muts)
+	}
+}
+
+func TestWrapLLMParaphrasesEmptyInputReturnsEmptySlice(t *testing.T) {
+	if muts := WrapLLMParaphrases(nil); len(muts) != 0 {
+		t.Errorf("WrapLLMParaphrases(nil) = %+v, want empty", muts)
+	}
+}

@@ -195,3 +195,17 @@ func contextPrefixMutations(prompt string) []Mutation {
 	}
 	return out
 }
+
+// WrapLLMParaphrases wraps already-generated paraphrase strings (fuzz_llm)
+// into Mutations. This package still never calls a model itself — the
+// caller (internal/runner, which already holds a client) generates or
+// retrieves the paraphrases from internal/fuzzcache and hands the plain
+// strings in here, keeping this package's own "pure, no model calls"
+// contract intact for every mutation operator it owns directly.
+func WrapLLMParaphrases(paraphrases []string) []Mutation {
+	out := make([]Mutation, len(paraphrases))
+	for i, p := range paraphrases {
+		out[i] = Mutation{Operator: "llm-paraphrase", Prompt: p}
+	}
+	return out
+}
