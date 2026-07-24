@@ -558,6 +558,180 @@ func TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
 	}
 }
 
+func TestRunCaseJudgeAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+
+		var text string
+		switch {
+		case req.Model == "claude-opus-4-8":
+			text = "SKILLCI_JUDGE: tone = PASS"
+		case len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't"):
+			// The negation mutation — must NOT flip in this test, since
+			// FuzzStrict isn't set and both fuzz and judge should still
+			// produce their own findings on a cleanly-passing case.
+			text = "SKILLCI_TRIGGERED: true\nA haiku about autumn leaves."
+		default:
+			text = "SKILLCI_TRIGGERED: true\nA haiku about autumn leaves."
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 100},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "judge-fuzz-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Fuzz:      truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if len(result.FuzzFindings) == 0 {
+		t.Error("FuzzFindings is empty, want mutations recorded — fuzz must still run alongside judge")
+	}
+	if len(result.JudgeFindings) != 1 || !result.JudgeFindings[0].Passed {
+		t.Errorf("JudgeFindings = %+v, want 1 passing finding — judge must still run alongside fuzz", result.JudgeFindings)
+	}
+}
+
+func TestRunCaseJudgeSkippedWhenFuzzStrictFlips(t *testing.T) {
+	judgeCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+
+		if req.Model == "claude-opus-4-8" {
+			judgeCalled = true
+		}
+
+		text := "SKILLCI_TRIGGERED: true\nA haiku about autumn leaves."
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			// The negation mutation flips here — combined with
+			// FuzzStrict: true below, this must fail the case and
+			// prevent judge from ever running.
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 100},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "judge-fuzz-strict-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{
+			Triggered:  truePtr(),
+			Fuzz:       truePtr(),
+			FuzzStrict: truePtr(),
+			Judge:      []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — fuzz_strict must fail the case when a mutation flips")
+	}
+	if result.JudgeFindings != nil {
+		t.Errorf("JudgeFindings = %v, want nil — judge must be skipped when an earlier assertion (fuzz_strict) already failed", result.JudgeFindings)
+	}
+	if judgeCalled {
+		t.Error("judge model was called despite fuzz_strict having already failed the case — judge must be skipped entirely, not just have its result discarded")
+	}
+}
+
+func TestRunCaseJudgeAndSnapshotBothEnabledProduceBothArtifacts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+
+		text := "SKILLCI_TRIGGERED: true\nA haiku about autumn leaves."
+		if req.Model == "claude-opus-4-8" {
+			text = "SKILLCI_JUDGE: tone = PASS"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 100},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "judge-snapshot-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Snapshot:  truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if result.SnapshotDiff != nil {
+		t.Errorf("SnapshotDiff = %+v, want nil on first run (nothing to compare against)", result.SnapshotDiff)
+	}
+	golden, ok, err := snapshot.Load(dir, "judge-snapshot-case", "claude-sonnet-5")
+	if err != nil || !ok {
+		t.Fatalf("golden not saved after first run: ok=%v err=%v", ok, err)
+	}
+	if golden == "" {
+		t.Error("saved golden text is empty")
+	}
+	if len(result.JudgeFindings) != 1 || !result.JudgeFindings[0].Passed {
+		t.Errorf("JudgeFindings = %+v, want 1 passing finding — judge must still run alongside snapshot", result.JudgeFindings)
+	}
+}
+
 // stubServerWithUsage is like the existing stubServer but also sets
 // output_tokens and can simulate latency via a deliberate delay — needed
 // for the new output-tokens/latency/cost tests without changing the
