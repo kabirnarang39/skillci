@@ -9,6 +9,7 @@ import (
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/fuzz"
 	"github.com/kabirnarang39/skillci/internal/snapshot"
 	"gopkg.in/yaml.v3"
 )
@@ -21,6 +22,7 @@ type Result struct {
 	Failures     []string
 	InputTokens  int
 	SnapshotDiff *snapshot.Diff
+	FuzzFindings []fuzz.Finding
 }
 
 type skillMeta struct {
@@ -74,16 +76,7 @@ If, given the user's message, you would invoke this skill, begin your response w
 		return Result{}, err
 	}
 
-	triggered := false
-	content := msg.Text
-	firstLine, remainder, _ := strings.Cut(msg.Text, "\n")
-	if strings.TrimSpace(firstLine) == triggerMarkerPrefix+" true" {
-		triggered = true
-		content = remainder
-	} else if strings.TrimSpace(strings.TrimSpace(msg.Text)) == triggerMarkerPrefix+" false" {
-		triggered = false
-		content = ""
-	}
+	triggered, content := parseTriggerMarker(msg.Text)
 
 	result := Result{
 		CaseName:    c.Name,
@@ -136,6 +129,49 @@ If, given the user's message, you would invoke this skill, begin your response w
 		}
 	}
 
+	// Fuzzing only runs once every other assertion has already passed
+	// (same guard as snapshot, same reasoning: don't waste model calls or
+	// report noise on a case that's already failing for an unrelated
+	// reason) and only when there's a Triggered expectation for a mutated
+	// prompt's outcome to be compared against.
+	if len(result.Failures) == 0 && c.Assert.Fuzz != nil && *c.Assert.Fuzz && c.Assert.Triggered != nil {
+		for _, m := range fuzz.Generate(c.Prompt) {
+			mMsg, err := client.Send(ctx, model, systemPrompt, m.Prompt)
+			if err != nil {
+				return Result{}, err
+			}
+			mTriggered, _ := parseTriggerMarker(mMsg.Text)
+			result.FuzzFindings = append(result.FuzzFindings, fuzz.Finding{
+				Mutation:  m,
+				Triggered: mTriggered,
+				Flipped:   mTriggered != *c.Assert.Triggered,
+			})
+		}
+		flipped := 0
+		for _, f := range result.FuzzFindings {
+			if f.Flipped {
+				flipped++
+			}
+		}
+		if flipped > 0 && c.Assert.FuzzStrict != nil && *c.Assert.FuzzStrict {
+			result.Failures = append(result.Failures, fmt.Sprintf("fuzz: %d/%d mutation(s) flipped trigger behavior", flipped, len(result.FuzzFindings)))
+		}
+	}
+
 	result.Passed = len(result.Failures) == 0
 	return result, nil
+}
+
+// parseTriggerMarker splits the model's response into whether the skill
+// would have triggered and the response content to check assertions
+// against (empty when the model reports it would not have triggered).
+func parseTriggerMarker(text string) (triggered bool, content string) {
+	firstLine, remainder, _ := strings.Cut(text, "\n")
+	if strings.TrimSpace(firstLine) == triggerMarkerPrefix+" true" {
+		return true, remainder
+	}
+	if strings.TrimSpace(strings.TrimSpace(text)) == triggerMarkerPrefix+" false" {
+		return false, ""
+	}
+	return false, text
 }
