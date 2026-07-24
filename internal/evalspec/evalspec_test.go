@@ -109,3 +109,25 @@ func TestLoadDirSnapshotFieldsDefaultNil(t *testing.T) {
 		t.Errorf("Assert.SnapshotStrict = %v, want nil when not specified", c.Assert.SnapshotStrict)
 	}
 }
+
+func TestLoadDirParsesFuzzFields(t *testing.T) {
+	dir := t.TempDir()
+	content := "name: fuzz-case\nprompt: hi\nassert:\n  triggered: true\n  fuzz: true\n  fuzz_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "case.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	c := cases[0]
+	if c.Assert.Fuzz == nil || !*c.Assert.Fuzz {
+		t.Error("Assert.Fuzz = nil or false, want true")
+	}
+	if c.Assert.FuzzStrict == nil || !*c.Assert.FuzzStrict {
+		t.Error("Assert.FuzzStrict = nil or false, want true")
+	}
+}
