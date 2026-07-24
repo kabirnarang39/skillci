@@ -72,7 +72,11 @@ func TestRegressCommandCommitSHAFallsBackToLocalGitHEAD(t *testing.T) {
 
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("SKILLCI_BASE_URL", srv.URL)
-	// GITHUB_SHA intentionally unset.
+	// GitHub Actions always sets GITHUB_SHA for the runner's own commit, so
+	// explicitly clear it rather than relying on it being absent from the
+	// ambient environment — this test is specifically about the fallback
+	// path, which only triggers when GITHUB_SHA is genuinely empty.
+	t.Setenv("GITHUB_SHA", "")
 
 	cmd := newRegressCmd()
 	var out bytes.Buffer
@@ -109,7 +113,10 @@ func TestRegressCommandCommitSHAEmptyWhenNoGitAndNoEnv(t *testing.T) {
 	dir := setupSkillWithCase(t) // plain temp dir, not a git repo
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 	t.Setenv("SKILLCI_BASE_URL", srv.URL)
-	// GITHUB_SHA intentionally unset.
+	// GitHub Actions always sets GITHUB_SHA for the runner's own commit, so
+	// explicitly clear it rather than relying on it being absent from the
+	// ambient environment.
+	t.Setenv("GITHUB_SHA", "")
 
 	cmd := newRegressCmd()
 	var out bytes.Buffer
