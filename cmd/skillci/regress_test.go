@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -304,6 +305,52 @@ func TestRegressCommandPrintsSnapshotDiffWhenChanged(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "SNAPSHOT CHANGED") {
 		t.Errorf("output = %q, want it to mention SNAPSHOT CHANGED", out.String())
+	}
+}
+
+func TestRegressCommandPrintsFuzzFlipsWhenMutationFlips(t *testing.T) {
+	dir := setupSkillWithCase(t)
+	evalsDir := filepath.Join(dir, "evals")
+	caseContent := "name: c1\nprompt: Can you write me a haiku?\nassert:\n  triggered: true\n  fuzz: true\n"
+	if err := os.WriteFile(filepath.Join(evalsDir, "c1.yaml"), []byte(caseContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			// The negation mutation that inserts "don't" before the verb flips the outcome
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+
+	if err := cmd.Execute(); err != nil {
+		t.Errorf("Execute() error = %v, want nil; output = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "[FUZZ]") {
+		t.Errorf("output = %q, want it to mention [FUZZ]", out.String())
 	}
 }
 

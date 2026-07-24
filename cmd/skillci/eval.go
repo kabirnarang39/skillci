@@ -60,6 +60,20 @@ func newEvalCmd() *cobra.Command {
 				if result.SnapshotDiff != nil {
 					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", result.SnapshotDiff.Render)
 				}
+				if len(result.FuzzFindings) > 0 {
+					flipped := 0
+					for _, f := range result.FuzzFindings {
+						if f.Flipped {
+							flipped++
+						}
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "  [FUZZ] %d/%d mutations flipped trigger behavior\n", flipped, len(result.FuzzFindings))
+					for _, f := range result.FuzzFindings {
+						if f.Flipped {
+							fmt.Fprintf(cmd.OutOrStdout(), "    %s: %q -> triggered=%v (want %v)\n", f.Mutation.Operator, f.Mutation.Prompt, f.Triggered, !f.Triggered)
+						}
+					}
+				}
 			}
 
 			if failed > 0 {
