@@ -485,3 +485,73 @@ func TestRunCaseFuzzSkippedWithoutTriggeredAssertion(t *testing.T) {
 		t.Errorf("FuzzFindings = %+v, want none — fuzz has nothing to compare against without a triggered assertion", result.FuzzFindings)
 	}
 }
+
+// TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts is a regression
+// test for the final whole-branch review's Minor gap: RunCase runs the
+// snapshot block (touches only the primary response's content) before the
+// fuzz block (touches only each mutation's parsed trigger outcome), so
+// enabling both on the same case must produce a saved golden snapshot AND
+// fuzz findings, with neither block corrupting the other's state. If a
+// future edit reorders the two blocks, this test should catch it.
+func TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nA haiku about autumn leaves."
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 100},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "both-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr(), Fuzz: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true (non-strict fuzz); Failures = %v", result.Failures)
+	}
+
+	if result.SnapshotDiff != nil {
+		t.Errorf("SnapshotDiff = %+v, want nil on first run (nothing to compare against)", result.SnapshotDiff)
+	}
+	golden, ok, err := snapshot.Load(dir, "both-case", "claude-sonnet-5")
+	if err != nil || !ok {
+		t.Fatalf("golden not saved after first run: ok=%v err=%v", ok, err)
+	}
+	if golden == "" {
+		t.Error("saved golden text is empty")
+	}
+
+	if len(result.FuzzFindings) == 0 {
+		t.Fatal("FuzzFindings is empty, want mutations recorded")
+	}
+	sawFlip := false
+	for _, f := range result.FuzzFindings {
+		if f.Flipped {
+			sawFlip = true
+		}
+	}
+	if !sawFlip {
+		t.Errorf("FuzzFindings = %+v, want at least one Flipped=true finding (the don't-insertion negation mutation)", result.FuzzFindings)
+	}
+}
