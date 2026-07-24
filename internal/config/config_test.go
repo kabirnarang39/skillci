@@ -183,3 +183,30 @@ func TestLoadStrictDimensionsDefaultsEmpty(t *testing.T) {
 		t.Errorf("StrictDimensions = %+v, want empty when not configured", cfg.StrictDimensions)
 	}
 }
+
+func TestLoadParsesJudgeModel(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "models: [claude-sonnet-5]\njudge_model: claude-opus-4-8\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.JudgeModel != "claude-opus-4-8" {
+		t.Errorf("JudgeModel = %q, want claude-opus-4-8", cfg.JudgeModel)
+	}
+}
+
+func TestLoadJudgeModelDefaultsEmpty(t *testing.T) {
+	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.JudgeModel != "" {
+		t.Errorf("JudgeModel = %q, want empty when not configured", cfg.JudgeModel)
+	}
+}

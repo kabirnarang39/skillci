@@ -254,3 +254,57 @@ func TestLoadDirFlakeFieldsDefaultNil(t *testing.T) {
 		t.Errorf("FlakeStrict = %v, want nil when not specified", c.Assert.FlakeStrict)
 	}
 }
+
+func TestLoadDirParsesJudgeFields(t *testing.T) {
+	dir := t.TempDir()
+	content := `name: judge-case
+prompt: hi
+assert:
+  triggered: true
+  judge_strict: true
+  judge:
+    - name: tone
+      criterion: "Is the response friendly and professional?"
+    - name: length
+      criterion: "Is the response under 100 words?"
+`
+	writeCase(t, dir, "case.yaml", content)
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	c := cases[0]
+	if len(c.Assert.Judge) != 2 {
+		t.Fatalf("Judge = %v, want 2 criteria", c.Assert.Judge)
+	}
+	if c.Assert.Judge[0].Name != "tone" || c.Assert.Judge[0].Criterion != "Is the response friendly and professional?" {
+		t.Errorf("Judge[0] = %+v, unexpected fields", c.Assert.Judge[0])
+	}
+	if c.Assert.Judge[1].Name != "length" {
+		t.Errorf("Judge[1].Name = %q, want length", c.Assert.Judge[1].Name)
+	}
+	if c.Assert.JudgeStrict == nil || !*c.Assert.JudgeStrict {
+		t.Errorf("JudgeStrict = %v, want true", c.Assert.JudgeStrict)
+	}
+}
+
+func TestLoadDirJudgeFieldsDefaultNil(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "plain.yaml", "name: plain-case\nprompt: p\nassert:\n  triggered: true\n")
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Assert.Judge != nil {
+		t.Errorf("Judge = %v, want nil when not specified", c.Assert.Judge)
+	}
+	if c.Assert.JudgeStrict != nil {
+		t.Errorf("JudgeStrict = %v, want nil when not specified", c.Assert.JudgeStrict)
+	}
+}

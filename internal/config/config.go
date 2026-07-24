@@ -22,6 +22,11 @@ type Config struct {
 	// Dimensions["segment"] == "enterprise" gates CI strictly even if
 	// FailOn is set to a looser policy like "triggered_only".
 	StrictDimensions map[string][]string `yaml:"strict_dimensions"`
+	// JudgeModel is the model that evaluates Judge criteria —
+	// deliberately separate from the models under test, since a model
+	// can't reliably judge itself when it's also the thing that might
+	// have drifted. A case with no Judge criteria doesn't need this set.
+	JudgeModel string `yaml:"judge_model"`
 }
 
 // ModelPricing is one model's per-million-token rates, matching
