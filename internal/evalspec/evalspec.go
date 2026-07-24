@@ -30,6 +30,17 @@ type Assertions struct {
 	// FuzzStrict makes a flipped mutation a hard case failure, same as any
 	// other assertion. Meaningless if Fuzz is not true.
 	FuzzStrict *bool `yaml:"fuzz_strict"`
+	// FuzzLLM additionally generates paraphrases via the model itself,
+	// testing against realistic rewording a fixed synonym dictionary
+	// structurally can't anticipate — the failure mode this catches
+	// (a skill that only triggers on wording nobody predicted in advance)
+	// is different from what Fuzz's deterministic operators test, not a
+	// stronger version of the same thing. Generated once per unique
+	// prompt and cached to .skillci/fuzz-llm-cache.json, so the API cost
+	// and non-determinism are paid once, not on every run. Meaningless if
+	// Fuzz is not true — it adds mutations to the same fuzz pass, it
+	// doesn't run independently.
+	FuzzLLM *bool `yaml:"fuzz_llm"`
 	// MaxOutputTokens caps the response length. A violation is always a
 	// hard case failure, same as MaxTokensLoaded.
 	MaxOutputTokens *int `yaml:"max_output_tokens"`

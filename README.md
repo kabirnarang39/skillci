@@ -251,6 +251,26 @@ skillci fuzz path/to/your-skill --model claude-sonnet-5
 or let it run automatically as part of `skillci regress` for any case that
 sets `fuzz: true` — no separate invocation needed for full coverage.
 
+The deterministic operators above test a different failure mode than the
+one that actually burns teams: a fixed synonym dictionary can't anticipate
+how a real user would reword a request. Add `fuzz_llm: true` alongside
+`fuzz: true` to additionally have the model itself generate 3 realistic
+paraphrases:
+
+```yaml
+assert:
+  triggered: true
+  fuzz: true
+  fuzz_llm: true
+```
+
+Unlike the deterministic operators, this costs a real API call — but only
+once per unique prompt, ever. Generated paraphrases are cached to
+`.skillci/fuzz-llm-cache.json` (git-committed like `history.json`), so
+every subsequent run against the same prompt — including on a different
+machine or CI runner — reuses the cached set instead of asking the model
+again. Pay the generation cost once, not per run.
+
 Model responses aren't fully deterministic — even at low temperature,
 sampling variance can make a `triggered`/`contains`/`not_contains` check
 fail on an otherwise-healthy skill. For cases where that matters more

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -380,6 +381,115 @@ func TestRunCaseFuzzFlippedNonStrictStillPasses(t *testing.T) {
 	}
 	if !sawFlip {
 		t.Errorf("FuzzFindings = %+v, want at least one Flipped=true finding (the don't-insertion negation mutation)", result.FuzzFindings)
+	}
+}
+
+// TestRunCaseFuzzLLMGeneratesAndTestsParaphrases is the end-to-end
+// reachability test for fuzz_llm: proves RunCase actually asks the model
+// for paraphrases (a distinct call, identified by its own system prompt)
+// and then tests each returned paraphrase the same way as any other
+// mutation, producing llm-paraphrase FuzzFindings.
+func TestRunCaseFuzzLLMGeneratesAndTestsParaphrases(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			System   string `json:"system"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+
+		text := "SKILLCI_TRIGGERED: true"
+		if strings.Contains(req.System, "reword requests into alternative phrasings") {
+			text = "Could you please write a haiku for me\nWrite one haiku\nI'd like a haiku written"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "fuzz-llm-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzLLM: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+
+	var llmFindings int
+	for _, f := range result.FuzzFindings {
+		if f.Mutation.Operator == "llm-paraphrase" {
+			llmFindings++
+		}
+	}
+	if llmFindings != 3 {
+		t.Fatalf("llm-paraphrase findings = %d, want 3; FuzzFindings = %+v", llmFindings, result.FuzzFindings)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, ".skillci", "fuzz-llm-cache.json")); err != nil {
+		t.Errorf(".skillci/fuzz-llm-cache.json was not written: %v", err)
+	}
+}
+
+// TestRunCaseFuzzLLMReusesCachedParaphrasesAcrossInvocations proves the
+// paraphrase-generation call only ever happens once per unique prompt —
+// a second RunCase call against the same prompt must not re-invoke the
+// model to generate paraphrases again, even though the paraphrases
+// themselves are still re-tested against the skill each run (only their
+// generation is cached, not their test results).
+func TestRunCaseFuzzLLMReusesCachedParaphrasesAcrossInvocations(t *testing.T) {
+	var generationCalls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			System string `json:"system"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+
+		text := "SKILLCI_TRIGGERED: true"
+		if strings.Contains(req.System, "reword requests into alternative phrasings") {
+			generationCalls.Add(1)
+			text = "paraphrase one\nparaphrase two\nparaphrase three"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "fuzz-llm-cache-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzLLM: truePtr()},
+	}
+
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+		t.Fatalf("first RunCase() error = %v", err)
+	}
+	if got := generationCalls.Load(); got != 1 {
+		t.Fatalf("generation calls after first run = %d, want 1", got)
+	}
+
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+		t.Fatalf("second RunCase() error = %v", err)
+	}
+	if got := generationCalls.Load(); got != 1 {
+		t.Errorf("generation calls after second run (same prompt) = %d, want still 1 — the cache should have been reused", got)
 	}
 }
 
