@@ -295,7 +295,14 @@ message: tighten haiku-writer's tone guidance
 
 `skillci regress` also prints a `skillci bisect ...` suggestion inline
 whenever it detects a new regression, so you don't need to remember the
-command yourself.
+command yourself. Pass `--auto-bisect` to have it run bisect immediately
+instead of just printing the suggestion — useful in CI, where the run's
+own logs then already contain the culprit without a second manual
+invocation:
+
+```bash
+skillci regress --auto-bisect
+```
 
 Merge commits in the range are detected automatically — bisect falls back
 from binary search to a full linear scan of every candidate, which

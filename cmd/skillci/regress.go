@@ -21,7 +21,7 @@ import (
 )
 
 func newRegressCmd() *cobra.Command {
-	var uploadFlag bool
+	var uploadFlag, autoBisectFlag bool
 	cmd := &cobra.Command{
 		Use:   "regress [path]",
 		Short: "Run the eval suite across the configured model matrix and fail CI on new regressions",
@@ -65,6 +65,18 @@ func newRegressCmd() *cobra.Command {
 				return err
 			}
 
+			// Resolved once, up front, so --auto-bisect always hands
+			// runBisect the commit regress just tested as --bad — the
+			// history.json on disk isn't updated with newRun until after
+			// this loop, so runBisect's own on-disk auto-resolution would
+			// otherwise pick up the *previous* run's (likely passing) SHA.
+			currentSHA := os.Getenv("GITHUB_SHA")
+			if currentSHA == "" {
+				if sha, err := gitutil.RevParseHEAD(dir); err == nil {
+					currentSHA = sha
+				}
+			}
+
 			for _, o := range report.Outcomes {
 				status := "PASS"
 				switch {
@@ -87,7 +99,14 @@ func newRegressCmd() *cobra.Command {
 				printFlakeReport(cmd.OutOrStdout(), o.Result, o.Case.Assert.FlakeStrict != nil && *o.Case.Assert.FlakeStrict)
 				printJudgeFindings(cmd.OutOrStdout(), o.Result.JudgeFindings)
 				if o.IsNewRegression {
-					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %q --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
+					if autoBisectFlag {
+						fmt.Fprintf(cmd.OutOrStdout(), "  auto-bisecting %s (model %s) to find which commit broke it...\n", o.Case.Name, o.Model)
+						if err := runBisect(cmd.OutOrStdout(), o.Case.Name, dir, o.Model, "", currentSHA); err != nil {
+							fmt.Fprintf(cmd.OutOrStdout(), "  auto-bisect failed: %v\n", err)
+						}
+					} else {
+						fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %q --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
+					}
 				}
 			}
 			printDimensionRollup(cmd.OutOrStdout(), report.Outcomes)
@@ -108,14 +127,7 @@ func newRegressCmd() *cobra.Command {
 			}
 
 			newRun.Timestamp = time.Now()
-			newRun.CommitSHA = os.Getenv("GITHUB_SHA")
-			if newRun.CommitSHA == "" {
-				// Best-effort: not every skill directory is inside a git
-				// repository, and regress must keep working when it isn't.
-				if sha, err := gitutil.RevParseHEAD(dir); err == nil {
-					newRun.CommitSHA = sha
-				}
-			}
+			newRun.CommitSHA = currentSHA
 
 			hist.Append(newRun)
 			if err := hist.Save(historyPath); err != nil {
@@ -222,6 +234,7 @@ func newRegressCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&uploadFlag, "upload", false, "upload results to the SkillCI dashboard")
+	cmd.Flags().BoolVar(&autoBisectFlag, "auto-bisect", false, "automatically run skillci bisect on every new regression instead of just printing the suggested command")
 	return cmd
 }
 
