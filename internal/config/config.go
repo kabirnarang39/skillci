@@ -16,6 +16,12 @@ type Config struct {
 	// without notice and a stale table would silently misreport cost.
 	// A model with no entry here simply can't use max_cost_usd.
 	Pricing map[string]ModelPricing `yaml:"pricing"`
+	// StrictDimensions names eval-case Dimensions key/values that always
+	// fail CI on any case failure, regardless of FailOn — e.g.
+	// {"segment": ["enterprise"]} means any case with
+	// Dimensions["segment"] == "enterprise" gates CI strictly even if
+	// FailOn is set to a looser policy like "triggered_only".
+	StrictDimensions map[string][]string `yaml:"strict_dimensions"`
 }
 
 // ModelPricing is one model's per-million-token rates, matching
