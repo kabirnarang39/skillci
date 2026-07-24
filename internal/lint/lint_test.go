@@ -375,3 +375,40 @@ func TestLintSkillFlagsAST04UnexpectedFrontmatterField(t *testing.T) {
 		t.Errorf("LintSkill() issues = %v, want an ast04-unexpected-frontmatter-field issue", issues)
 	}
 }
+
+func TestLintSkillRoutesDuplicateFrontmatterKeyToAST04(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\nname: my-skill-again\ndescription: Does a thing.\n", "Body.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	foundAST04 := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-duplicate-frontmatter-key" {
+			foundAST04 = true
+		}
+		if iss.Rule == "invalid-frontmatter" {
+			t.Errorf("LintSkill() issues = %v, want no invalid-frontmatter issue for a duplicate key", issues)
+		}
+	}
+	if !foundAST04 {
+		t.Errorf("LintSkill() issues = %v, want an ast04-duplicate-frontmatter-key issue", issues)
+	}
+}
+
+func TestLintSkillGenuineYAMLSyntaxErrorStillInvalidFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	// A tab character in the indentation is a genuine YAML syntax error
+	// (not a duplicate key) — must still be reported as invalid-frontmatter.
+	writeSkill(t, dir, "name: my-skill\n\tdescription: bad indent\n", "Body.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	if len(issues) != 1 || issues[0].Rule != "invalid-frontmatter" {
+		t.Errorf("LintSkill() issues = %v, want one invalid-frontmatter issue", issues)
+	}
+}

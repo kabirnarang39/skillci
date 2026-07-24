@@ -51,6 +51,14 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	var meta frontmatter
 	if err := yaml.Unmarshal([]byte(fm), &meta); err != nil {
+		// A duplicate top-level key is the one typed-unmarshal failure mode
+		// AST04 already has a dedicated rule for. Route it through
+		// scanFrontmatterSecurity (whose generic *yaml.Node parse doesn't
+		// error on duplicate keys) instead of the generic invalid-frontmatter
+		// message, so ast04-duplicate-frontmatter-key is actually reachable.
+		if strings.Contains(err.Error(), "already defined") {
+			return scanFrontmatterSecurity(skillPath, fm), nil
+		}
 		return []Issue{{File: skillPath, Line: 1, Rule: "invalid-frontmatter", Msg: err.Error()}}, nil
 	}
 
