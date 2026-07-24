@@ -346,9 +346,10 @@ func TestRunMatrixStrictDimensionFailOverridesLooseFailOn(t *testing.T) {
 }
 
 func TestRunMatrixNoStrictDimensionFailWhenCaseDoesNotMatch(t *testing.T) {
-	// Same failing case, but its dimension value isn't in strict_dimensions
-	// — must NOT force a CI failure under the loose triggered_only policy,
-	// and Triggered matches (true==true) so triggered_only doesn't fail it either.
+	// A passing case (Triggered matches true==true, so triggered_only
+	// doesn't fail it) whose dimension value also isn't in
+	// strict_dimensions — confirms no false trigger of the gate for an
+	// unrelated reason.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := map[string]any{
 			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true"}},
@@ -383,6 +384,54 @@ func TestRunMatrixNoStrictDimensionFailWhenCaseDoesNotMatch(t *testing.T) {
 	}
 	if report.ShouldFailCI(cfg.FailOn) {
 		t.Error("ShouldFailCI(triggered_only) = true, want false — no strict match, and Triggered assertion is satisfied")
+	}
+}
+
+// TestRunMatrixNoStrictDimensionFailWhenPassingCaseMatchesStrictDimensions
+// covers the hard constraint this feature's spec calls out by name:
+// StrictDimensionFail must never be true for a passing case even when it
+// matches a strict dimension. TestRunMatrixNoStrictDimensionFailWhenCaseDoesNotMatch
+// doesn't actually exercise this — its case's dimensions don't match
+// strict_dimensions at all, so matchesStrictDimensions never even gets to
+// true. This test's case DOES match strict_dimensions and DOES pass, so the
+// only thing keeping StrictDimensionFail false is the `!result.Passed &&`
+// guard in RunMatrix's wiring — this test fails if that guard is ever
+// dropped.
+func TestRunMatrixNoStrictDimensionFailWhenPassingCaseMatchesStrictDimensions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:       "enterprise-passing-case",
+			Prompt:     "review this",
+			Assert:     evalspec.Assertions{Triggered: truePtr()},
+			Dimensions: map[string]string{"segment": "enterprise"},
+		},
+	}
+	cfg := config.Config{
+		Models:           []string{"claude-sonnet-5"},
+		FailOn:           "triggered_only",
+		StrictDimensions: map[string][]string{"segment": {"enterprise"}},
+	}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if report.Outcomes[0].StrictDimensionFail {
+		t.Error("StrictDimensionFail = true, want false — case passed, so it must never force-fail CI even though its dimensions match strict_dimensions")
+	}
+	if report.ShouldFailCI(cfg.FailOn) {
+		t.Error("ShouldFailCI(triggered_only) = true, want false — passing case, no reason to fail CI")
 	}
 }
 
