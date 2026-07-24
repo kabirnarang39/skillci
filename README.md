@@ -133,6 +133,48 @@ skillci fuzz path/to/your-skill --model claude-sonnet-5
 or let it run automatically as part of `skillci regress` for any case that
 sets `fuzz: true` — no separate invocation needed for full coverage.
 
+When a case that used to pass starts failing, `skillci bisect` finds which
+commit in your skill's own git history broke it — the same binary-search
+idea as `git bisect`, aimed at your skill instead of your code, holding the
+current model fixed throughout:
+
+```bash
+skillci bisect my-case --path path/to/your-skill --model claude-sonnet-5
+```
+
+With no `--good`/`--bad` flags, it looks up the last recorded passing run
+for that case in `.skillci/history.json` and the most recent recorded run,
+and searches the commits between them that touched the skill's files —
+checking out each candidate into a disposable `git worktree` (your actual
+working tree is never touched) and re-running the case against it:
+
+```
+verifying good/bad endpoints...
+  9f8e7d6 — fail
+  a1b2c3d — pass
+good: a1b2c3d (2026-06-01) — passes
+bad:  9f8e7d6 (2026-07-20) — fails
+7 candidate commits, up to 3 more API calls
+bisecting...
+  4f3a2b1 — pass
+  8c7d6e5 — fail
+
+culprit: 6a5b4c3d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3
+author:  Kabir Narang <kabir.narang@zinier.com>
+date:    2026-07-10
+message: tighten haiku-writer's tone guidance
+
+--- SKILL.md (6a5b4c3d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3^)
++++ SKILL.md (6a5b4c3d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3)
+@@ ...
+- Write a haiku about the requested topic.
++ Write a haiku about the requested topic, staying strictly formal in tone.
+```
+
+`skillci regress` also prints a `skillci bisect ...` suggestion inline
+whenever it detects a new regression, so you don't need to remember the
+command yourself.
+
 ## GitHub Actions
 
 ```yaml
@@ -165,6 +207,7 @@ go run ./cmd/skillci-server
 | `skillci accept` | Promote a generated eval case into the permanent suite |
 | `skillci diff` | Show a case's pending snapshot change against its golden baseline |
 | `skillci fuzz` | Run mutation-based robustness testing for fuzz-enabled eval cases |
+| `skillci bisect` | Binary-search a skill's git history for the commit that broke an eval case |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
 
 ## The full case for this
