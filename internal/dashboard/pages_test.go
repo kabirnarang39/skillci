@@ -31,7 +31,7 @@ func TestSkillPageRendersHistoryAndBadgeState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := NewServer(store, "secret-token")
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
 	req := httptest.NewRequest(http.MethodGet, "/s/kabirnarang/skillci/page-test-skill", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -57,7 +57,7 @@ func TestSkillPageNotFound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := NewServer(store, "secret-token")
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
 	req := httptest.NewRequest(http.MethodGet, "/s/nobody/nothing/nothing", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -80,7 +80,7 @@ func TestLeaderboardPageRenders(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := NewServer(store, "secret-token")
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -118,7 +118,7 @@ func TestSkillPageRendersDimensionBreakdown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := NewServer(store, "secret-token")
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
 	req := httptest.NewRequest(http.MethodGet, "/s/kabirnarang/skillci/"+skill, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -152,7 +152,7 @@ func TestSkillPageNoDimensionSectionWhenNoDimensionData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mux := NewServer(store, "secret-token")
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
 	req := httptest.NewRequest(http.MethodGet, "/s/kabirnarang/skillci/"+skill, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
@@ -261,7 +261,7 @@ func TestSkillPageSparklineChronologicalOrder(t *testing.T) {
 		}
 	}
 
-	mux := NewServer(store, "secret-token")
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
 	req := httptest.NewRequest(http.MethodGet, "/s/test/chronotest/"+skill, nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)

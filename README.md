@@ -381,6 +381,12 @@ export SKILLCI_INGEST_TOKEN="a-shared-secret"
 go run ./cmd/skillci-server
 ```
 
+`SKILLCI_INGEST_TOKEN` is a single unscoped token — fine for a single project. If one instance serves more than one project, use `SKILLCI_INGEST_TOKENS` instead (`token=owner/repo` pairs, comma-separated) so each token only authorizes results for its own repo — a leaked token from one project can't be used to forge results for another sharing the same instance:
+
+```bash
+export SKILLCI_INGEST_TOKENS="token-a=myorg/skill-a,token-b=myorg/skill-b"
+```
+
 ## Commands
 
 | Command | What it does |

@@ -7,6 +7,26 @@ import (
 	"time"
 )
 
+// maxIngestBodyBytes bounds how much of a request body ingestHandler will
+// read before giving up — a small JSON payload (owner/repo/skill/commit/
+// model/pass plus a handful of dimension entries) never needs anywhere
+// close to this; it exists purely to cap worst-case memory from an
+// oversized or malicious body, decoded before any other validation runs.
+const maxIngestBodyBytes = 1 << 20 // 1 MiB
+
+// TokenScope binds a bearer token to the exact owner/repo it may post
+// results for. Owner/Repo empty means unscoped — authorized for any
+// owner/repo, which is what a single self-hosted instance serving one
+// project wants (and preserves the original single-shared-token
+// behavior). A non-empty Owner/Repo restricts that token to only ever
+// authorize payloads claiming that exact owner/repo, so a leaked token
+// can't forge results for a different project sharing the same instance.
+type TokenScope struct {
+	Token string
+	Owner string
+	Repo  string
+}
+
 type DimensionEntry struct {
 	Key    string `json:"key"`
 	Value  string `json:"value"`
@@ -23,10 +43,23 @@ type IngestPayload struct {
 	Dimensions []DimensionEntry `json:"dimensions,omitempty"`
 }
 
-func ingestHandler(store *Store, token string) http.HandlerFunc {
+func ingestHandler(store *Store, tokens []TokenScope) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+token {
+		r.Body = http.MaxBytesReader(w, r.Body, maxIngestBodyBytes)
+
+		presented, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		var scope *TokenScope
+		for i := range tokens {
+			if tokens[i].Token == presented {
+				scope = &tokens[i]
+				break
+			}
+		}
+		if scope == nil {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -38,6 +71,10 @@ func ingestHandler(store *Store, token string) http.HandlerFunc {
 		}
 		if strings.TrimSpace(p.Owner) == "" || strings.TrimSpace(p.Repo) == "" || strings.TrimSpace(p.Skill) == "" {
 			http.Error(w, "owner, repo, and skill_name are required", http.StatusBadRequest)
+			return
+		}
+		if (scope.Owner != "" && scope.Owner != p.Owner) || (scope.Repo != "" && scope.Repo != p.Repo) {
+			http.Error(w, "token is not authorized for this owner/repo", http.StatusForbidden)
 			return
 		}
 
