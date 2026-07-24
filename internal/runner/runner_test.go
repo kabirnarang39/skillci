@@ -814,3 +814,304 @@ func TestRunCaseFailsHardOnMissingPricingForCostAssertion(t *testing.T) {
 		t.Errorf("Failures = %v, want a message naming the missing pricing configuration", result.Failures)
 	}
 }
+
+// sequencedStubServer returns a stub server that replies with texts[i] on
+// the (i+1)th request it receives (1-indexed), and repeats the last entry
+// for any request beyond len(texts) — plus a pointer to the live call
+// count so tests can assert exactly how many requests were actually made
+// (proving early-stop behavior, not just the final verdict).
+func sequencedStubServer(t *testing.T, texts []string) (*httptest.Server, *int) {
+	t.Helper()
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idx := callCount
+		if idx >= len(texts) {
+			idx = len(texts) - 1
+		}
+		callCount++
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": texts[idx]}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	return srv, &callCount
+}
+
+func TestRunCaseFlakeRetriesConfirmedPassAfterInitialFailure(t *testing.T) {
+	// Attempt 1 fails (false), attempts 2-3 pass (true) — majority passes.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: true",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if result.FlakeVerdict != "confirmed_pass" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_pass", result.FlakeVerdict)
+	}
+	if *callCount != 3 {
+		t.Errorf("callCount = %d, want 3 (all attempts needed to reach a majority)", *callCount)
+	}
+}
+
+func TestRunCaseFlakeRetriesConfirmedFail(t *testing.T) {
+	// FlakeRetries: 2 allows at most 3 total attempts. The first 2 attempts
+	// both fail, and with only 1 attempt remaining a pass there could not
+	// overturn a 2-0 deficit (1 < 2), so the majority is already decided
+	// after attempt 2 — the same early-stop math exercised by
+	// TestRunCaseFlakeRetriesEarlyStopsOnDecidedMajority. The 3rd reply
+	// exists only to prove it is never consumed.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false", // must never be reached — decided at attempt 2
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — all attempts failed")
+	}
+	if result.FlakeVerdict != "confirmed_fail" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_fail", result.FlakeVerdict)
+	}
+	if *callCount != 2 {
+		t.Errorf("callCount = %d, want 2 (majority decided after 2 fails; the 3rd attempt must never be made)", *callCount)
+	}
+}
+
+func TestRunCaseFlakeRetriesEarlyStopsOnDecidedMajority(t *testing.T) {
+	// flake_retries: 4 allows up to 5 attempts, but the first 3 all fail:
+	// with fails=3 and only 2 attempts remaining, passes can never catch
+	// up (3 > 0+2), so the vote is decided after attempt 3 — attempts 4-5
+	// must never be made.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true", // must never be reached
+		"SKILLCI_TRIGGERED: true", // must never be reached
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(4)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false")
+	}
+	if *callCount != 3 {
+		t.Errorf("callCount = %d, want 3 (must stop early once the majority is decided, not spend the full 5-attempt budget)", *callCount)
+	}
+	if result.FlakeAttemptsTotal != 3 {
+		t.Errorf("FlakeAttemptsTotal = %d, want 3", result.FlakeAttemptsTotal)
+	}
+}
+
+func TestRunCaseFlakeRetriesUnstableTieNonStrictInformationalOnly(t *testing.T) {
+	// flake_retries: 1 allows 2 total attempts, 1 pass + 1 fail = tie.
+	srv, _ := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FlakeVerdict != "unstable" {
+		t.Errorf("FlakeVerdict = %q, want unstable", result.FlakeVerdict)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true — a non-strict tie must not fail the case; Failures = %v", result.Failures)
+	}
+}
+
+func TestRunCaseFlakeRetriesUnstableTieStrictFails(t *testing.T) {
+	srv, _ := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1), FlakeStrict: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FlakeVerdict != "unstable" {
+		t.Errorf("FlakeVerdict = %q, want unstable", result.FlakeVerdict)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — flake_strict must fail an unresolved tie")
+	}
+}
+
+func TestRunCaseFlakeRetriesNotTriggeredWhenFirstAttemptPasses(t *testing.T) {
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: false", // must never be reached
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if result.FlakeVerdict != "" {
+		t.Errorf("FlakeVerdict = %q, want empty — no retry should have been attempted", result.FlakeVerdict)
+	}
+	if *callCount != 1 {
+		t.Errorf("callCount = %d, want 1 — a passing first attempt must never trigger a retry", *callCount)
+	}
+}
+
+func TestRunCaseFlakeStrictAloneWithoutFlakeRetriesIsInert(t *testing.T) {
+	// flake_strict: true with no flake_retries set at all — per the
+	// design's error-handling section, this must be inert config, not an
+	// error, and must not trigger any retry (only FlakeRetries>0 does).
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true", // must never be reached
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeStrict: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — the single attempt failed and no retry should have run to change that")
+	}
+	if result.FlakeVerdict != "" {
+		t.Errorf("FlakeVerdict = %q, want empty — flake_strict alone must not trigger a retry", result.FlakeVerdict)
+	}
+	if *callCount != 1 {
+		t.Errorf("callCount = %d, want 1 — flake_strict without flake_retries must be inert", *callCount)
+	}
+}
+
+func TestRunCaseFlakeRetriesExplicitZeroBehavesLikeUnset(t *testing.T) {
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true", // must never be reached
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(0)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false")
+	}
+	if result.FlakeVerdict != "" {
+		t.Errorf("FlakeVerdict = %q, want empty — flake_retries: 0 must behave identically to unset", result.FlakeVerdict)
+	}
+	if *callCount != 1 {
+		t.Errorf("callCount = %d, want 1 — flake_retries: 0 must not trigger any retry", *callCount)
+	}
+}
+
+func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
+	// The trigger assertion passes; only a budget assertion (max_tokens_loaded)
+	// fails. flake_retries is set, but must have no effect — budget
+	// assertions are never retried.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), MaxTokensLoaded: intPtr(10), FlakeRetries: intPtr(2)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — max_tokens_loaded exceeded (input is 50 tokens per sequencedStubServer, budget is 10)")
+	}
+	if result.FlakeVerdict != "" {
+		t.Errorf("FlakeVerdict = %q, want empty — a budget-only failure must never trigger a retry", result.FlakeVerdict)
+	}
+	if *callCount != 1 {
+		t.Errorf("callCount = %d, want 1 — budget assertions are never retried regardless of flake_retries", *callCount)
+	}
+}
