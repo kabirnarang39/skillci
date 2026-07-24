@@ -1,0 +1,6 @@
+name: "example-snapshot"
+prompt: "I added a dark mode toggle to the settings page, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+  snapshot: true

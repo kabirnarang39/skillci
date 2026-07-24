@@ -1,0 +1,6 @@
+name: "example-fuzz"
+prompt: "I refactored the auth middleware to use context instead of globals, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+  fuzz: true

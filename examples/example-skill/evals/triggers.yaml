@@ -1,5 +1,8 @@
 name: "example-triggers"
-prompt: "Can you demonstrate the example skill?"
+prompt: "I fixed an off-by-one bug in the pagination code, can you write a changelog entry?"
 skill_under_test: "example-skill"
 assert:
   triggered: true
+  contains: ["fix:"]
+  not_contains: ["I cannot"]
+  max_tokens_loaded: 3000

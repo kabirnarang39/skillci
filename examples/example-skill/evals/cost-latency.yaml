@@ -1,0 +1,9 @@
+name: "example-cost-latency"
+prompt: "I updated the README to document the new CLI flag, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+  max_output_tokens: 200
+  max_latency_ms: 5000
+  latency_strict: false
+  max_cost_usd: 0.01

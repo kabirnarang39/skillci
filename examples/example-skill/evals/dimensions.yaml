@@ -1,0 +1,7 @@
+name: "example-dimensions"
+prompt: "I removed the legacy export button from the enterprise admin dashboard, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+dimensions:
+  segment: enterprise
