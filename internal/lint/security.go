@@ -36,6 +36,41 @@ var base64BlobRe = regexp.MustCompile(`[A-Za-z0-9+/]{80,}={0,2}`)
 
 var dynamicExecRe = regexp.MustCompile(`\b(eval|exec)\s*\(\s*[^"'\)]`)
 
+// execConcatCallRe matches the start of an eval(/exec( call whose first
+// non-whitespace argument character is a quote — the case dynamicExecRe
+// deliberately excludes as "starts with a string literal". Captures the
+// quote character so hasExecConcatBypass can find that literal's closing
+// quote and inspect only what comes after it.
+var execConcatCallRe = regexp.MustCompile(`\b(?:eval|exec)\s*\(\s*(['"])`)
+
+// hasExecConcatBypass reports whether line calls eval/exec with an argument
+// that starts as a string literal but then concatenates something onto it
+// with '+' before the call's closing paren — e.g. eval("prefix" + user_input)
+// — a bypass of dynamicExecRe's "starts with a quote, therefore safe"
+// assumption. A '+' character has to be found strictly after the literal's
+// own closing quote to count; a '+' that merely appears inside the quoted
+// content (e.g. eval("1 + 1")) must not trigger this. A plain regex can't
+// make that distinction (Go's RE2 has no way to say "not inside the string
+// that started at the previous quote"), hence the closing-quote-first,
+// then-check-after approach below instead of a single regex.
+func hasExecConcatBypass(line string) bool {
+	loc := execConcatCallRe.FindStringSubmatchIndex(line)
+	if loc == nil {
+		return false
+	}
+	quote := line[loc[2]]
+	afterOpenQuote := line[loc[3]:]
+	closeIdx := strings.IndexByte(afterOpenQuote, quote)
+	if closeIdx == -1 {
+		return false
+	}
+	afterLiteral := afterOpenQuote[closeIdx+1:]
+	if parenIdx := strings.IndexByte(afterLiteral, ')'); parenIdx != -1 {
+		afterLiteral = afterLiteral[:parenIdx]
+	}
+	return strings.IndexByte(afterLiteral, '+') != -1
+}
+
 // scanTextForAST01 scans arbitrary text content — a SKILL.md body or a
 // referenced file's content — for malicious-payload patterns (AST01).
 func scanTextForAST01(file, content string) []Issue {
@@ -54,8 +89,8 @@ func scanTextForAST01(file, content string) []Issue {
 		if base64BlobRe.MatchString(line) {
 			issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast01-embedded-base64-blob", Msg: "line contains a long base64-looking blob"})
 		}
-		if dynamicExecRe.MatchString(line) {
-			issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast01-dynamic-exec-untrusted-input", Msg: "line calls eval/exec on a non-literal argument"})
+		if dynamicExecRe.MatchString(line) || hasExecConcatBypass(line) {
+			issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast01-dynamic-exec-untrusted-input", Msg: "line calls eval/exec on a non-literal argument or concatenates onto a string literal argument"})
 		}
 	}
 	return issues

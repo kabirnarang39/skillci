@@ -98,6 +98,12 @@ func LintSkill(dir string) ([]Issue, error) {
 		// error on duplicate keys) instead of the generic invalid-frontmatter
 		// message, so ast04-duplicate-frontmatter-key is actually reachable.
 		if strings.Contains(err.Error(), "already defined") {
+			// Only the duplicate-key issue is reported here; the rest of
+			// LintSkill's checks are skipped, matching the existing
+			// invalid-frontmatter early-return precedent above — the
+			// duplicate-key issue always fires, so this is never a
+			// silently-clean result, just a partial one until the user
+			// fixes the frontmatter and re-runs.
 			return scanFrontmatterSecurity(skillPath, fm), nil
 		}
 		return []Issue{{File: skillPath, Line: 1, Rule: "invalid-frontmatter", Msg: err.Error()}}, nil
