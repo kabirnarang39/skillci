@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
 	"github.com/kabirnarang39/skillci/internal/config"
@@ -17,6 +18,7 @@ import (
 	"github.com/kabirnarang39/skillci/internal/history"
 	"github.com/kabirnarang39/skillci/internal/runner"
 	"github.com/kabirnarang39/skillci/internal/snapshot"
+	"gopkg.in/yaml.v3"
 )
 
 func newSkillDir(t *testing.T) string {
@@ -113,6 +115,51 @@ func TestRunMatrixNoRegressionWhenNoPriorHistory(t *testing.T) {
 	}
 	if len(report.GeneratedCases) != 1 {
 		t.Errorf("GeneratedCases = %v, want 1 (uncovered failing case)", report.GeneratedCases)
+	}
+}
+
+// TestRunMatrixGeneratedCaseCapturesFailureContext is the end-to-end
+// reachability test for the self-growing eval loop's failure-context
+// fields: it traces a real uncovered failure all the way through
+// RunMatrix and checks the resulting GeneratedCase carries the model,
+// a real (non-zero) detection timestamp, and the model's actual response
+// — not just the bare name/prompt/assert the case used to carry before.
+func TestRunMatrixGeneratedCaseCapturesFailureContext(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: false\nI can't help with that particular request."}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{Name: "c1", Prompt: "review this", Assert: evalspec.Assertions{Triggered: truePtr()}},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	before := time.Now()
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	after := time.Now()
+
+	if len(report.GeneratedCases) != 1 {
+		t.Fatalf("GeneratedCases = %v, want 1", report.GeneratedCases)
+	}
+	gc := report.GeneratedCases[0]
+	if gc.Model != "claude-sonnet-5" {
+		t.Errorf("Model = %q, want claude-sonnet-5", gc.Model)
+	}
+	if gc.Timestamp.Before(before) || gc.Timestamp.After(after) {
+		t.Errorf("Timestamp = %v, want between %v and %v", gc.Timestamp, before, after)
+	}
+	if !strings.Contains(gc.ActualResponse, "I can't help with that particular request.") {
+		t.Errorf("ActualResponse = %q, want it to contain the model's actual response text", gc.ActualResponse)
 	}
 }
 
@@ -289,7 +336,13 @@ func TestRunMatrixFuzzStrictFailureDoesNotProposeGeneratedCase(t *testing.T) {
 
 func TestWriteGeneratedCases(t *testing.T) {
 	dir := newSkillDir(t)
-	cases := []evalspec.Case{{Name: "generated-case", Prompt: "some failing prompt", SkillUnderTest: "pr-review"}}
+	when := time.Date(2026, 7, 24, 21, 30, 0, 0, time.UTC)
+	cases := []GeneratedCase{{
+		Case:           evalspec.Case{Name: "generated-case", Prompt: "some failing prompt", SkillUnderTest: "pr-review"},
+		Model:          "claude-sonnet-5",
+		Timestamp:      when,
+		ActualResponse: "I can't help with that request.",
+	}}
 
 	paths, err := WriteGeneratedCases(dir, cases)
 	if err != nil {
@@ -298,11 +351,31 @@ func TestWriteGeneratedCases(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatalf("paths = %v, want 1", paths)
 	}
-	if _, err := os.Stat(paths[0]); err != nil {
-		t.Errorf("generated file not written: %v", err)
+	data, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatalf("generated file not written: %v", err)
 	}
 	if filepath.Dir(paths[0]) != filepath.Join(dir, "evals", "_generated") {
 		t.Errorf("generated file in %s, want evals/_generated", filepath.Dir(paths[0]))
+	}
+
+	content := string(data)
+	for _, want := range []string{
+		"# model: claude-sonnet-5",
+		"# detected_at: 2026-07-24T21:30:00Z",
+		"#   I can't help with that request.",
+	} {
+		if !strings.Contains(content, want) {
+			t.Errorf("file content = %q, want it to contain %q", content, want)
+		}
+	}
+
+	var loaded evalspec.Case
+	if err := yaml.Unmarshal(data, &loaded); err != nil {
+		t.Fatalf("yaml.Unmarshal() of the written file (with its comment header) error = %v", err)
+	}
+	if loaded.Name != "generated-case" || loaded.Prompt != "some failing prompt" {
+		t.Errorf("loaded = %+v, want the case body to parse correctly despite the leading comment header", loaded)
 	}
 }
 

@@ -24,6 +24,12 @@ type Result struct {
 	InputTokens  int
 	SnapshotDiff *snapshot.Diff
 	FuzzFindings []fuzz.Finding
+	// ResponseText is the model's response with any trigger marker line
+	// stripped (the same `content` used for Contains/NotContains checks
+	// and snapshotting) — carried on Result so callers like the
+	// self-growing eval loop can capture what the model actually said
+	// about a failure, not just pass/fail.
+	ResponseText string
 	// OutputTokens and LatencyMs are always populated, independent of
 	// whether any assertion uses them.
 	OutputTokens int
@@ -112,6 +118,7 @@ If, given the user's message, you would invoke this skill, begin your response w
 		InputTokens:  msg.InputTokens,
 		OutputTokens: msg.OutputTokens,
 		LatencyMs:    msg.Latency.Milliseconds(),
+		ResponseText: content,
 	}
 
 	triggerMsgs := checkTriggerAssertions(triggered, content, c.Assert)
