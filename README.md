@@ -94,6 +94,40 @@ skillci diff my-case --path path/to/your-skill --model claude-sonnet-5   # inspe
 skillci accept my-case --model claude-sonnet-5                    # promote
 ```
 
+To check whether a skill's trigger behavior is robust to rewording — not just
+whether the exact eval prompt fires it — add `fuzz: true` to a case that also
+asserts `triggered`:
+
+```yaml
+name: "haiku-request-triggers"
+prompt: "Can you write me a haiku about autumn leaves?"
+skill_under_test: "haiku-writer"
+assert:
+  triggered: true
+  fuzz: true
+```
+
+Every run generates deterministic paraphrases of the prompt — synonym swaps,
+negation insertion, sentence reordering, and unrelated leading context — and
+checks whether the skill still triggers (or doesn't) the way `triggered`
+expects. No LLM writes the paraphrases; the mutations are fixed, non-random
+string transformations, so a fuzz run costs nothing beyond the extra model
+calls it makes. Like `snapshot`, this is informational by default:
+
+```
+[FUZZ] 2/9 mutations flipped trigger behavior
+  negation: "Can you don't write me a haiku about autumn leaves?" -> triggered=false (want true)
+```
+
+Add `fuzz_strict: true` to fail CI on a flip. Run it standalone with:
+
+```bash
+skillci fuzz path/to/your-skill --model claude-sonnet-5
+```
+
+or let it run automatically as part of `skillci regress` for any case that
+sets `fuzz: true` — no separate invocation needed for full coverage.
+
 ## GitHub Actions
 
 ```yaml
@@ -125,6 +159,7 @@ go run ./cmd/skillci-server
 | `skillci regress` | Run the full model matrix, diff vs. last known-good, gate CI |
 | `skillci accept` | Promote a generated eval case into the permanent suite |
 | `skillci diff` | Show a case's pending snapshot change against its golden baseline |
+| `skillci fuzz` | Run mutation-based robustness testing for fuzz-enabled eval cases |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
 
 ## The full case for this
