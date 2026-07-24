@@ -159,10 +159,11 @@ func newRegressCmd() *cobra.Command {
 					}
 				}
 				// Same AND-aggregation as passedByModel above, re-scoped to
-				// cases carrying each dimension key/value pair: keyed by
-				// model, then "key\x00value" (dimension keys/values are
-				// user-supplied free text, so a real separator character
-				// avoids collisions a plain "+" or ":" join could hit).
+				// cases carrying each dimension key/value pair: keyed by a
+				// struct of the three fields directly, not a joined string
+				// — dimension keys/values are user-supplied free text, so a
+				// struct key sidesteps any separator-collision risk a
+				// plain "+" or ":" join could hit.
 				type dimSlice struct{ model, key, value string }
 				passedByDimSlice := make(map[dimSlice]bool)
 				for _, o := range report.Outcomes {
