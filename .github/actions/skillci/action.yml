@@ -5,6 +5,10 @@ inputs:
     description: "Path to the skill directory"
     required: false
     default: "."
+  version:
+    description: "skillci version to install (a git tag, or 'latest' to float on main — not recommended for production, since it means every consumer's CI silently picks up whatever ships next with no build reproducibility)"
+    required: false
+    default: "v0.1.0"
   anthropic-api-key:
     description: "Anthropic API key"
     required: true
@@ -22,7 +26,7 @@ runs:
   using: "composite"
   steps:
     - shell: bash
-      run: go install github.com/kabirnarang39/skillci/cmd/skillci@latest
+      run: go install "github.com/kabirnarang39/skillci/cmd/skillci@${{ inputs.version }}"
     - shell: bash
       env:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
