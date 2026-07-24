@@ -131,6 +131,17 @@ func newRegressCmd() *cobra.Command {
 				}
 			}
 
+			stale, err := regress.ScanStaleGeneratedCases(dir, regress.StaleGeneratedCaseThreshold)
+			if err != nil {
+				return err
+			}
+			if len(stale) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "\nwarning: %d unaddressed generated eval case(s) older than %d days — run `skillci accept <name>` or delete them:\n", len(stale), int(regress.StaleGeneratedCaseThreshold.Hours()/24))
+				for _, s := range stale {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s (detected %s)\n", s.Path, s.DetectedAt.Format("2006-01-02"))
+				}
+			}
+
 			newRun.Timestamp = time.Now()
 			newRun.CommitSHA = currentSHA
 

@@ -173,6 +173,19 @@ assert:
   triggered: false
 ```
 
+That `detected_at` also backs a staleness check: once a case+model's first
+failure is recorded, `regress` never re-proposes or re-flags the same
+combination again on later runs (see `fail_on: regression` above) — so a
+generated case nobody ever ran `accept` on can otherwise sit under
+`evals/_generated/` forever with CI staying green the whole time.
+`regress` warns instead of staying silent once one's been sitting there
+over 14 days:
+
+```
+warning: 1 unaddressed generated eval case(s) older than 14 days — run `skillci accept <name>` or delete them:
+  evals/_generated/unrelated-request-should-not-trigger-generated-claude-sonnet-5.yaml (detected 2026-07-10)
+```
+
 For cases where you want to know if a skill's actual response *content*
 drifts between runs — not just whether it triggered or hit the right
 substrings — add `snapshot: true`:
