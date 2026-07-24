@@ -90,6 +90,81 @@ func TestLeaderboardPageRenders(t *testing.T) {
 	}
 }
 
+func TestSkillPageRendersDimensionBreakdown(t *testing.T) {
+	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("SKILLCI_TEST_DATABASE_URL not set")
+	}
+	store, err := NewStore(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	skill := "dim-page-test-skill"
+	if err := store.InsertResult(context.Background(), IngestedResult{
+		Owner: "kabirnarang", Repo: "skillci", Skill: skill,
+		CommitSHA: "abc", Model: "claude-sonnet-5", Passed: false, Timestamp: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InsertDimensionResult(context.Background(), DimensionResult{
+		Owner: "kabirnarang", Repo: "skillci", Skill: skill,
+		CommitSHA: "abc", Model: "claude-sonnet-5",
+		DimensionKey: "segment", DimensionValue: "enterprise",
+		Passed: false, Timestamp: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := NewServer(store, "secret-token")
+	req := httptest.NewRequest(http.MethodGet, "/s/kabirnarang/skillci/"+skill, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "segment") || !strings.Contains(body, "enterprise") {
+		t.Errorf("skill page body missing dimension breakdown; body = %s", body)
+	}
+}
+
+func TestSkillPageNoDimensionSectionWhenNoDimensionData(t *testing.T) {
+	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
+	if url == "" {
+		t.Skip("SKILLCI_TEST_DATABASE_URL not set")
+	}
+	store, err := NewStore(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	skill := "no-dim-page-test-skill"
+	if err := store.InsertResult(context.Background(), IngestedResult{
+		Owner: "kabirnarang", Repo: "skillci", Skill: skill,
+		CommitSHA: "abc", Model: "claude-sonnet-5", Passed: true, Timestamp: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := NewServer(store, "secret-token")
+	req := httptest.NewRequest(http.MethodGet, "/s/kabirnarang/skillci/"+skill, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "By Dimension") {
+		t.Error("skill page rendered a By Dimension section for a skill with no dimension data at all")
+	}
+}
+
 func TestRenderSparklineProducesSVG(t *testing.T) {
 	results := []IngestedResult{
 		{Passed: true, Timestamp: time.Now().Add(-2 * time.Hour)},

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -355,6 +356,23 @@ var skillPageTmpl = template.Must(template.New("skill").Funcs(pageFuncs).Parse(`
       </tbody>
     </table>
   </div>
+
+  {{if .DimensionGroups}}
+  <div class="card" style="margin-top: 20px;">
+    <div class="card-header">By Dimension</div>
+    <table>
+      <thead><tr><th>Dimension</th><th>Model</th><th>Result</th></tr></thead>
+      <tbody>
+      {{range .DimensionGroups}}{{$key := .Key}}{{range $i, $row := .Rows}}<tr style="{{stagger $i}}">
+        <td class="mono">{{$key}}={{$row.DimensionValue}}</td>
+        <td class="mono">{{$row.Model}}</td>
+        <td>{{if $row.Passed}}<span class="pill pill-pass"><span class="pill-dot"></span>pass</span>{{else}}<span class="pill pill-fail"><span class="pill-dot"></span>fail</span>{{end}}</td>
+      </tr>
+      {{end}}{{end}}
+      </tbody>
+    </table>
+  </div>
+  {{end}}
 </div>
 </body></html>`))
 
@@ -403,10 +421,16 @@ var leaderboardTmpl = template.Must(template.New("leaderboard").Funcs(pageFuncs)
 </div>
 </body></html>`))
 
+type dimensionGroup struct {
+	Key  string
+	Rows []DimensionResult
+}
+
 type skillPageData struct {
 	Owner, Repo, Skill string
 	SparklineSVG       template.HTML
 	Rows               []IngestedResult
+	DimensionGroups    []dimensionGroup
 }
 
 func skillPageHandler(store *Store) http.HandlerFunc {
@@ -425,6 +449,28 @@ func skillPageHandler(store *Store) http.HandlerFunc {
 			return
 		}
 
+		dimRows, err := store.LatestDimensionResults(r.Context(), owner, repo, skill)
+		if err != nil {
+			http.Error(w, "failed to load dimension breakdown", http.StatusInternalServerError)
+			return
+		}
+		// Grouped and sorted here (not in the template — html/template
+		// can't group), so output is deterministic run-to-run instead of
+		// depending on the query's own row order for repeated keys.
+		byKey := make(map[string][]DimensionResult)
+		for _, dr := range dimRows {
+			byKey[dr.DimensionKey] = append(byKey[dr.DimensionKey], dr)
+		}
+		var keys []string
+		for k := range byKey {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		var dimensionGroups []dimensionGroup
+		for _, k := range keys {
+			dimensionGroups = append(dimensionGroups, dimensionGroup{Key: k, Rows: byKey[k]})
+		}
+
 		// RenderSparkline expects oldest-to-newest; SkillHistory returns newest-to-oldest.
 		// Reverse for sparkline while keeping rows in original order for template.
 		sparklineRows := make([]IngestedResult, len(rows))
@@ -435,8 +481,9 @@ func skillPageHandler(store *Store) http.HandlerFunc {
 
 		data := skillPageData{
 			Owner: owner, Repo: repo, Skill: skill,
-			SparklineSVG: template.HTML(RenderSparkline(sparklineRows)),
-			Rows:         rows,
+			SparklineSVG:    template.HTML(RenderSparkline(sparklineRows)),
+			Rows:            rows,
+			DimensionGroups: dimensionGroups,
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		if err := skillPageTmpl.Execute(w, data); err != nil {
