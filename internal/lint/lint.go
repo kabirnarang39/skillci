@@ -13,10 +13,10 @@ import (
 )
 
 type Issue struct {
-	File string
-	Line int
-	Rule string
-	Msg  string
+	File string `json:"file"`
+	Line int    `json:"line"`
+	Rule string `json:"rule"`
+	Msg  string `json:"msg"`
 }
 
 type frontmatter struct {

@@ -97,6 +97,12 @@ user-configurable, and — like the security rules — purely local pattern
 matching, not a judgment call about whether a skill is *good*, just
 whether it's carrying more than it needs to.
 
+Add `--format json` for machine-parseable output — a stable array of `{file,
+line, rule, msg}` objects on stdout (`[]` for a clean skill, never `null`),
+with the pass/fail exit code as the only other signal a caller needs. This
+is what the [VS Code extension](#vs-code-extension) below runs under the
+hood; useful for any other editor integration or script too.
+
 ```bash
 # Run the eval suite against one model
 skillci eval path/to/your-skill --model claude-sonnet-5
