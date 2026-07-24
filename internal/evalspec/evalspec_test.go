@@ -181,3 +181,38 @@ func TestLoadDirCostLatencyFieldsDefaultNil(t *testing.T) {
 		t.Errorf("MaxCostUSD = %v, want nil when not specified", c.Assert.MaxCostUSD)
 	}
 }
+
+func TestLoadDirParsesDimensions(t *testing.T) {
+	dir := t.TempDir()
+	content := "name: enterprise-case\nprompt: hi\nassert:\n  triggered: true\ndimensions:\n  segment: enterprise\n  language: es\n"
+	writeCase(t, dir, "case.yaml", content)
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	c := cases[0]
+	if c.Dimensions["segment"] != "enterprise" {
+		t.Errorf("Dimensions[segment] = %q, want enterprise", c.Dimensions["segment"])
+	}
+	if c.Dimensions["language"] != "es" {
+		t.Errorf("Dimensions[language] = %q, want es", c.Dimensions["language"])
+	}
+}
+
+func TestLoadDirDimensionsDefaultNil(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "plain.yaml", "name: plain-case\nprompt: p\nassert:\n  triggered: true\n")
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Dimensions != nil {
+		t.Errorf("Dimensions = %v, want nil when not specified", c.Dimensions)
+	}
+}
