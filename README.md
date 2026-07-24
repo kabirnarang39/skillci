@@ -305,6 +305,13 @@ genuinely has more than one commit where behavior transitions from
 passing to failing, that's reported as a warning rather than silently
 picked.
 
+Every verified (case, model, commit) result is persisted to
+`.skillci/bisect-cache.json`, so re-running bisect on the same case — after
+an interruption, or while investigating a related case whose range
+overlaps commits already tested — never re-checks-out or re-runs a commit
+it already has an answer for; those show up as `(cached)` in the output
+instead of a fresh API call.
+
 For cost and latency budgets, three more assertions are available:
 
 ```yaml
