@@ -81,7 +81,7 @@ func newRegressCmd() *cobra.Command {
 				}
 				printFuzzFindings(cmd.OutOrStdout(), o.Result.FuzzFindings)
 				if o.IsNewRegression {
-					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %s --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
+					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %q --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
 				}
 			}
 
