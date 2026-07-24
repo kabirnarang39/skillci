@@ -216,3 +216,41 @@ func TestLoadDirDimensionsDefaultNil(t *testing.T) {
 		t.Errorf("Dimensions = %v, want nil when not specified", c.Dimensions)
 	}
 }
+
+func TestLoadDirParsesFlakeFields(t *testing.T) {
+	dir := t.TempDir()
+	content := "name: flake-case\nprompt: hi\nassert:\n  triggered: true\n  flake_retries: 2\n  flake_strict: true\n"
+	writeCase(t, dir, "case.yaml", content)
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	c := cases[0]
+	if c.Assert.FlakeRetries == nil || *c.Assert.FlakeRetries != 2 {
+		t.Errorf("FlakeRetries = %v, want 2", c.Assert.FlakeRetries)
+	}
+	if c.Assert.FlakeStrict == nil || !*c.Assert.FlakeStrict {
+		t.Errorf("FlakeStrict = %v, want true", c.Assert.FlakeStrict)
+	}
+}
+
+func TestLoadDirFlakeFieldsDefaultNil(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "plain.yaml", "name: plain-case\nprompt: p\nassert:\n  triggered: true\n")
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Assert.FlakeRetries != nil {
+		t.Errorf("FlakeRetries = %v, want nil when not specified", c.Assert.FlakeRetries)
+	}
+	if c.Assert.FlakeStrict != nil {
+		t.Errorf("FlakeStrict = %v, want nil when not specified", c.Assert.FlakeStrict)
+	}
+}
