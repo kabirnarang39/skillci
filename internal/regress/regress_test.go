@@ -379,6 +379,82 @@ func TestWriteGeneratedCases(t *testing.T) {
 	}
 }
 
+func TestScanStaleGeneratedCasesFlagsOldFile(t *testing.T) {
+	dir := newSkillDir(t)
+	old := time.Now().Add(-30 * 24 * time.Hour)
+	_, err := WriteGeneratedCases(dir, []GeneratedCase{{
+		Case:      evalspec.Case{Name: "old-case", Prompt: "p"},
+		Model:     "claude-sonnet-5",
+		Timestamp: old,
+	}})
+	if err != nil {
+		t.Fatalf("WriteGeneratedCases() error = %v", err)
+	}
+
+	stale, err := ScanStaleGeneratedCases(dir, StaleGeneratedCaseThreshold)
+	if err != nil {
+		t.Fatalf("ScanStaleGeneratedCases() error = %v", err)
+	}
+	if len(stale) != 1 {
+		t.Fatalf("stale = %+v, want 1 entry", stale)
+	}
+	if !stale[0].DetectedAt.Equal(old.UTC().Truncate(time.Second)) {
+		t.Errorf("DetectedAt = %v, want %v", stale[0].DetectedAt, old.UTC().Truncate(time.Second))
+	}
+}
+
+func TestScanStaleGeneratedCasesIgnoresRecentFile(t *testing.T) {
+	dir := newSkillDir(t)
+	_, err := WriteGeneratedCases(dir, []GeneratedCase{{
+		Case:      evalspec.Case{Name: "fresh-case", Prompt: "p"},
+		Model:     "claude-sonnet-5",
+		Timestamp: time.Now(),
+	}})
+	if err != nil {
+		t.Fatalf("WriteGeneratedCases() error = %v", err)
+	}
+
+	stale, err := ScanStaleGeneratedCases(dir, StaleGeneratedCaseThreshold)
+	if err != nil {
+		t.Fatalf("ScanStaleGeneratedCases() error = %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("stale = %+v, want none for a freshly generated case", stale)
+	}
+}
+
+func TestScanStaleGeneratedCasesSkipsFileWithoutDetectedAtHeader(t *testing.T) {
+	dir := newSkillDir(t)
+	generatedDir := filepath.Join(dir, "evals", "_generated")
+	if err := os.MkdirAll(generatedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No detected_at comment at all — e.g. hand-written, or predates this
+	// field. Must be silently skipped, not treated as infinitely stale.
+	if err := os.WriteFile(filepath.Join(generatedDir, "hand-written.yaml"), []byte("name: hand-written\nprompt: p\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stale, err := ScanStaleGeneratedCases(dir, StaleGeneratedCaseThreshold)
+	if err != nil {
+		t.Fatalf("ScanStaleGeneratedCases() error = %v", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("stale = %+v, want none for a file with no detected_at header", stale)
+	}
+}
+
+func TestScanStaleGeneratedCasesNoDirectoryReturnsNoError(t *testing.T) {
+	dir := newSkillDir(t) // evals/_generated doesn't exist at all yet
+	stale, err := ScanStaleGeneratedCases(dir, StaleGeneratedCaseThreshold)
+	if err != nil {
+		t.Fatalf("ScanStaleGeneratedCases() error = %v, want nil when evals/_generated doesn't exist", err)
+	}
+	if len(stale) != 0 {
+		t.Errorf("stale = %+v, want none", stale)
+	}
+}
+
 func TestShouldFailCIAnyFailMode(t *testing.T) {
 	report := MatrixReport{Outcomes: []Outcome{
 		{IsNewRegression: false, Result: runner.Result{Passed: false}},

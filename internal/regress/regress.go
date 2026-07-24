@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -174,6 +175,70 @@ func WriteGeneratedCases(skillDir string, cases []GeneratedCase) ([]string, erro
 		written = append(written, path)
 	}
 	return written, nil
+}
+
+// StaleGeneratedCaseThreshold is how long a generated case can sit under
+// evals/_generated/ unaddressed before ScanStaleGeneratedCases flags it.
+// Once a case+model's first failure is recorded in history.json, that
+// same combination never triggers IsNewRegression or a fresh proposal
+// again on subsequent runs (see RunMatrix's !hadPrior gate) — CI stays
+// green indefinitely on an accepted-but-ignored failure unless something
+// else surfaces it. Fixed, not user-configurable, matching the project's
+// existing bloat-threshold precedent.
+const StaleGeneratedCaseThreshold = 14 * 24 * time.Hour
+
+// StaleGeneratedCase is one evals/_generated/*.yaml file whose detected_at
+// comment header is older than StaleGeneratedCaseThreshold.
+type StaleGeneratedCase struct {
+	Path       string
+	DetectedAt time.Time
+}
+
+// detectedAtRe matches the `# detected_at: <RFC3339>` comment line
+// failureContextHeader writes — read back as plain text, not YAML,
+// since it's a comment and therefore invisible to yaml.Unmarshal.
+var detectedAtRe = regexp.MustCompile(`(?m)^# detected_at: (\S+)`)
+
+// ScanStaleGeneratedCases lists evals/_generated/*.yaml under skillDir and
+// returns any whose detected_at comment header is older than maxAge. A
+// file with no detected_at header (predates this field, or was added by
+// hand) is silently skipped — there's no reliable age to judge it by
+// without one, and file mtime doesn't survive a fresh CI checkout the way
+// a value written into the file's own content does.
+func ScanStaleGeneratedCases(skillDir string, maxAge time.Duration) ([]StaleGeneratedCase, error) {
+	dir := filepath.Join(skillDir, "evals", "_generated")
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	var stale []StaleGeneratedCase
+	now := time.Now()
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		m := detectedAtRe.FindSubmatch(data)
+		if m == nil {
+			continue
+		}
+		detectedAt, err := time.Parse(time.RFC3339, string(m[1]))
+		if err != nil {
+			continue
+		}
+		if now.Sub(detectedAt) > maxAge {
+			stale = append(stale, StaleGeneratedCase{Path: path, DetectedAt: detectedAt})
+		}
+	}
+	return stale, nil
 }
 
 // failureContextHeader renders gc's failure context as a YAML comment
