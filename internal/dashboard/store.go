@@ -63,6 +63,47 @@ func (s *Store) SkillHistory(ctx context.Context, owner, repo, skill string) ([]
 	return out, rows.Err()
 }
 
+type DimensionResult struct {
+	Owner, Repo, Skill, CommitSHA, Model string
+	DimensionKey, DimensionValue         string
+	Passed                               bool
+	Timestamp                            time.Time
+}
+
+func (s *Store) InsertDimensionResult(ctx context.Context, r DimensionResult) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO dimension_results (owner, repo, skill, commit_sha, model, dimension_key, dimension_value, passed, ts) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		r.Owner, r.Repo, r.Skill, r.CommitSHA, r.Model, r.DimensionKey, r.DimensionValue, r.Passed, r.Timestamp)
+	return err
+}
+
+// LatestDimensionResults returns the most recent row per (model,
+// dimension_key, dimension_value) for a skill — same DISTINCT ON pattern
+// Leaderboard already uses to collapse history down to "latest per slice".
+func (s *Store) LatestDimensionResults(ctx context.Context, owner, repo, skill string) ([]DimensionResult, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT ON (model, dimension_key, dimension_value)
+			owner, repo, skill, commit_sha, model, dimension_key, dimension_value, passed, ts
+		FROM dimension_results
+		WHERE owner=$1 AND repo=$2 AND skill=$3
+		ORDER BY model, dimension_key, dimension_value, ts DESC
+	`, owner, repo, skill)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []DimensionResult
+	for rows.Next() {
+		var r DimensionResult
+		if err := rows.Scan(&r.Owner, &r.Repo, &r.Skill, &r.CommitSHA, &r.Model, &r.DimensionKey, &r.DimensionValue, &r.Passed, &r.Timestamp); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 type LeaderboardEntry struct {
 	Owner, Repo, Skill string
 	PassRate           float64
