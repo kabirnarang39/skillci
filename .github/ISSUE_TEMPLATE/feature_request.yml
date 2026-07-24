@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose something skillci doesn't do yet
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: >-
+        A real workflow you hit, not just "it would be nice if" — skillci
+        stays deliberately narrow (see the README's Status section), so
+        the strongest requests are ones tied to an actual failure mode or
+        gap you ran into.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What would the CLI/Action/dashboard actually do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workaround you're using today, or other tools that solve this
+    validations:
+      required: false
