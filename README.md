@@ -541,6 +541,26 @@ go run ./cmd/skillci-server
 export SKILLCI_INGEST_TOKENS="token-a=myorg/skill-a,token-b=myorg/skill-b"
 ```
 
+## VS Code extension
+
+[`editors/vscode`](editors/vscode) runs `skillci check --format json` on
+open/save/edit and surfaces the results as inline diagnostics — security
+findings as Errors, everything else as Warnings — instead of only in a
+terminal or CI log. Not yet published to the Marketplace; build and install
+it locally:
+
+```bash
+cd editors/vscode
+npm install
+npm run package                              # builds skillci-<version>.vsix
+code --install-extension skillci-*.vsix
+```
+
+Requires the `skillci` binary on your `PATH` (same install as above); no
+`ANTHROPIC_API_KEY` needed since `check` is local-only. See
+[editors/vscode/README.md](editors/vscode/README.md) for settings and
+development instructions.
+
 ## Commands
 
 | Command | What it does |
