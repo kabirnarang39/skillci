@@ -263,6 +263,226 @@ func TestLintEvalsNoWarningWhenFuzzAndFuzzStrictSet(t *testing.T) {
 	}
 }
 
+func TestLintEvalsFlagsSnapshotStrictWithoutSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  snapshot_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "snapshot-strict-without-snapshot" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a snapshot-strict-without-snapshot issue", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenSnapshotAndSnapshotStrictSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  snapshot: true\n  snapshot_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "snapshot-strict-without-snapshot" {
+			t.Errorf("issues = %+v, want no snapshot-strict-without-snapshot issue when snapshot is also set", issues)
+		}
+	}
+}
+
+func TestLintEvalsFlagsLatencyStrictWithoutMaxLatencyMs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  latency_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "latency-strict-without-max-latency-ms" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a latency-strict-without-max-latency-ms issue", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenMaxLatencyMsAndLatencyStrictSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  max_latency_ms: 3000\n  latency_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "latency-strict-without-max-latency-ms" {
+			t.Errorf("issues = %+v, want no latency-strict-without-max-latency-ms issue when max_latency_ms is also set", issues)
+		}
+	}
+}
+
+func TestLintEvalsFlagsFlakeStrictWithoutFlakeRetries(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  flake_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "flake-strict-without-flake-retries" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a flake-strict-without-flake-retries issue", issues)
+	}
+}
+
+func TestLintEvalsFlagsFlakeStrictWithZeroFlakeRetries(t *testing.T) {
+	// flake_retries: 0 behaves identically to unset (per runner.go's own
+	// gating condition, *FlakeRetries > 0) — the lint rule must mirror
+	// that exact threshold, not just "is FlakeRetries nil".
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  flake_retries: 0\n  flake_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "flake-strict-without-flake-retries" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a flake-strict-without-flake-retries issue when flake_retries is explicitly 0", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenFlakeRetriesAndFlakeStrictSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  flake_retries: 2\n  flake_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "flake-strict-without-flake-retries" {
+			t.Errorf("issues = %+v, want no flake-strict-without-flake-retries issue when flake_retries is also set to a positive value", issues)
+		}
+	}
+}
+
+func TestLintEvalsFlagsJudgeStrictWithoutJudge(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  judge_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "judge-strict-without-judge" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a judge-strict-without-judge issue", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenJudgeAndJudgeStrictSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := `name: good-case
+prompt: hi
+assert:
+  triggered: true
+  judge_strict: true
+  judge:
+    - name: tone
+      criterion: "Is the response friendly?"
+`
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "judge-strict-without-judge" {
+			t.Errorf("issues = %+v, want no judge-strict-without-judge issue when judge is also set", issues)
+		}
+	}
+}
+
 func TestLintEvalsNoEvalsDirIsNotAnError(t *testing.T) {
 	dir := t.TempDir()
 	issues, err := LintEvals(dir)
