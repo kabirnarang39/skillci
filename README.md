@@ -270,6 +270,8 @@ Most tooling around Claude Skills does one slice — lint, or eval, or token-bud
 
 SkillCI's core differentiator is the **self-growing eval loop**: when a regression run catches a failure with no prior test coverage, it doesn't just fail — it writes a proposed eval case capturing exactly what broke, so you `skillci accept` it and the same gap can never silently regress twice. Catch once, covered forever.
 
+`skillci bisect` is real `git worktree`-based binary search over a skill's own commit history — not marketing language for "narrowing a failing axis." Other tools have converged on similar ideas from different angles (prompt-version stores, internal bisection over non-git state); skillci's is the version that runs against your actual repo, with Claude-Skills-native assertions.
+
 ## Status
 
 Early — the core CLI (lint/eval/regress/self-growing loop) is stable and tested; the dashboard is functional but newer. Issues and PRs welcome.
