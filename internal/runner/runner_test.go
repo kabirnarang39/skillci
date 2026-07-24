@@ -4,6 +4,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -324,5 +325,163 @@ func TestRunCaseSnapshotNotEnabledNoDiffField(t *testing.T) {
 	}
 	if _, ok, _ := snapshot.Load(dir, "plain-case", "claude-sonnet-5"); ok {
 		t.Error("a golden file was written even though Snapshot was not requested")
+	}
+}
+
+func TestRunCaseFuzzFlippedNonStrictStillPasses(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			// The negation mutation that inserts "don't" before the verb
+			// flips the outcome to not-triggered.
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "fuzz-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true — non-strict fuzz flips must not fail the case; Failures = %v", result.Failures)
+	}
+	if len(result.FuzzFindings) == 0 {
+		t.Fatal("FuzzFindings is empty, want mutations recorded")
+	}
+	sawFlip := false
+	for _, f := range result.FuzzFindings {
+		if f.Flipped {
+			sawFlip = true
+		}
+	}
+	if !sawFlip {
+		t.Errorf("FuzzFindings = %+v, want at least one Flipped=true finding (the don't-insertion negation mutation)", result.FuzzFindings)
+	}
+}
+
+func TestRunCaseFuzzFlippedStrictFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "fuzz-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — fuzz_strict must fail the case on a flipped mutation")
+	}
+}
+
+func TestRunCaseFuzzSkippedWhenOtherAssertionFails(t *testing.T) {
+	srv := stubServer(t, "SKILLCI_TRIGGERED: false", 100)
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+
+	c := evalspec.Case{
+		Name:   "fuzz-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false (did not trigger as asserted)")
+	}
+	if len(result.FuzzFindings) != 0 {
+		t.Errorf("FuzzFindings = %+v, want none — a case that already failed its own assertions must not be fuzzed", result.FuzzFindings)
+	}
+}
+
+func TestRunCaseFuzzNotEnabledNoFindings(t *testing.T) {
+	srv := stubServer(t, "SKILLCI_TRIGGERED: true\nA haiku.", 100)
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+
+	c := evalspec.Case{
+		Name:   "plain-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if len(result.FuzzFindings) != 0 {
+		t.Errorf("FuzzFindings = %+v, want none when Fuzz assertion is not set", result.FuzzFindings)
+	}
+}
+
+func TestRunCaseFuzzSkippedWithoutTriggeredAssertion(t *testing.T) {
+	srv := stubServer(t, "SKILLCI_TRIGGERED: true\nA haiku.", 100)
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+
+	c := evalspec.Case{
+		Name:   "no-triggered-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Fuzz: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if len(result.FuzzFindings) != 0 {
+		t.Errorf("FuzzFindings = %+v, want none — fuzz has nothing to compare against without a triggered assertion", result.FuzzFindings)
 	}
 }
