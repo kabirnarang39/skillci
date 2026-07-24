@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/kabirnarang39/skillci/internal/gitutil"
@@ -149,6 +150,82 @@ func bisectStubServer(t *testing.T) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}))
+}
+
+// bisectStubServerCounting behaves like bisectStubServer but also counts
+// every request it receives, via the returned *int64 (read with
+// atomic.LoadInt64), so a test can prove a second bisect invocation makes
+// fewer API calls than the first because it reused cached results.
+func bisectStubServerCounting(t *testing.T) (*httptest.Server, *int64) {
+	t.Helper()
+	var calls int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt64(&calls, 1)
+		body, _ := io.ReadAll(r.Body)
+		text := "SKILLCI_TRIGGERED: true"
+		if strings.Contains(string(body), "BROKEN") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	return srv, &calls
+}
+
+// TestBisectCmdReusesCachedResultsAcrossInvocations proves the persistent
+// .skillci/bisect-cache.json actually gets consulted on a second, separate
+// `skillci bisect` invocation on the same case — not just within one run's
+// in-memory `verified` map, which never survives past a single Execute().
+func TestBisectCmdReusesCachedResultsAcrossInvocations(t *testing.T) {
+	dir, shas := setupBisectRepo(t)
+	srv, calls := bisectStubServerCounting(t)
+	defer srv.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	args := []string{"haiku-case", "--path", dir, "--good", shas[0], "--bad", shas[3]}
+
+	cmd1 := newBisectCmd()
+	var out1 bytes.Buffer
+	cmd1.SetOut(&out1)
+	cmd1.SetArgs(args)
+	if err := cmd1.Execute(); err != nil {
+		t.Fatalf("first Execute() error = %v; output = %s", err, out1.String())
+	}
+	if strings.Contains(out1.String(), "(cached)") {
+		t.Errorf("first run output = %q, want no cache hits on a fresh cache", out1.String())
+	}
+	firstRunCalls := atomic.LoadInt64(calls)
+	if firstRunCalls == 0 {
+		t.Fatal("first run made zero API calls — test setup is broken")
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, ".skillci", "bisect-cache.json")); err != nil {
+		t.Fatalf(".skillci/bisect-cache.json was not created by the first run: %v", err)
+	}
+
+	cmd2 := newBisectCmd()
+	var out2 bytes.Buffer
+	cmd2.SetOut(&out2)
+	cmd2.SetArgs(args)
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("second Execute() error = %v; output = %s", err, out2.String())
+	}
+	if !strings.Contains(out2.String(), "culprit: "+shas[2]) {
+		t.Errorf("second run output = %q, want it to still name culprit %s", out2.String(), shas[2])
+	}
+	if cacheHits := strings.Count(out2.String(), "(cached)"); cacheHits < 2 {
+		t.Errorf("second run had %d cache hits, want at least 2 (good and bad endpoints reused from the persisted cache)", cacheHits)
+	}
+	secondRunNewCalls := atomic.LoadInt64(calls) - firstRunCalls
+	if secondRunNewCalls >= firstRunCalls {
+		t.Errorf("second run made %d new API calls (first run made %d) — want fewer, since good/bad and all candidates should already be cached", secondRunNewCalls, firstRunCalls)
+	}
 }
 
 func TestBisectCmdFindsCulpritWithManualGoodBad(t *testing.T) {

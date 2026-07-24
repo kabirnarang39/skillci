@@ -9,6 +9,7 @@ import (
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
 	"github.com/kabirnarang39/skillci/internal/bisect"
+	"github.com/kabirnarang39/skillci/internal/bisectcache"
 	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/gitutil"
@@ -107,7 +108,21 @@ func newBisectCmd() *cobra.Command {
 				return fmt.Errorf("no commits touched %s between %s and %s — the regression isn't caused by a skill change", path, goodSHA, badSHA)
 			}
 
+			cachePath := filepath.Join(path, ".skillci", "bisect-cache.json")
+			bcache, err := bisectcache.Load(cachePath)
+			if err != nil {
+				return err
+			}
+
 			test := func(sha string) (bool, error) {
+				if passed, ok := bcache.Result(caseName, model, sha); ok {
+					status := "fail"
+					if passed {
+						status = "pass"
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s — %s (cached)\n", shortSHA(sha), status)
+					return passed, nil
+				}
 				worktreePath, cleanup, err := gitutil.WorktreeAdd(absPath, sha)
 				if err != nil {
 					return false, err
@@ -126,6 +141,10 @@ func newBisectCmd() *cobra.Command {
 					status = "pass"
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s — %s\n", shortSHA(sha), status)
+				bcache.Record(caseName, model, sha, result.Passed)
+				if serr := bcache.Save(cachePath); serr != nil {
+					fmt.Fprintf(cmd.OutOrStdout(), "warning: failed to save bisect cache: %v\n", serr)
+				}
 				return result.Passed, nil
 			}
 
