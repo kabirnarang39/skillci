@@ -47,18 +47,25 @@ skillci init path/to/your-skill
 # references, description-length issues, committed secrets, a
 # first-layer static security scan (OWASP Agentic Skills Top 10:
 # malicious payloads, over-privileged access, insecure metadata parsing,
-# cross-platform format issues), and basic "skill bloat" warnings
-# (oversized body, duplicate instructions, too many/too-large referenced
-# files)
+# untrusted external instructions, cross-platform format issues), and
+# basic "skill bloat" warnings (oversized body, duplicate instructions,
+# too many/too-large referenced files)
 skillci check path/to/your-skill
 ```
 
-`skillci check`'s security rules are mapped directly to
-[OWASP's Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/):
-malicious payloads, over-privileged access requests, insecure frontmatter
-parsing, and cross-platform path issues. This is a first-layer static scan,
-not a malware scanner — obfuscated or natural-language-only attacks can
-bypass pattern matching, a limitation OWASP itself documents (AST08).
+`skillci check`'s security rules are mapped directly to 5 of
+[OWASP's Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/)
+categories — AST01 (malicious skills), AST03 (over-privileged skills), AST04
+(insecure metadata), AST05 (untrusted external instructions: a skill body
+that fetches instructions/config from a URL and directs the agent to treat
+it as authoritative), and AST10 (cross-platform reuse). This is a
+first-layer static scan, not a malware scanner — obfuscated or
+natural-language-only attacks can bypass pattern matching, a limitation
+OWASP itself documents (AST08). The other 4 categories — AST02 (supply
+chain), AST06 (weak isolation), AST07 (update drift), AST09 (no governance)
+— need infrastructure a static linter doesn't have (a registry/signing
+pipeline, a runtime sandbox, cross-run version tracking, an org-level
+inventory) and are out of scope by design, not by omission.
 
 `skillci check` also flags basic skill bloat: an oversized `SKILL.md` body
 (over 8000 characters — every extra instruction is loaded on every
