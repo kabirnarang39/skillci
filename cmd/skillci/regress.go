@@ -84,6 +84,7 @@ func newRegressCmd() *cobra.Command {
 				if o.Case.Assert.MaxLatencyMs != nil {
 					printLatencyWarning(cmd.OutOrStdout(), o.Result, *o.Case.Assert.MaxLatencyMs)
 				}
+				printFlakeReport(cmd.OutOrStdout(), o.Result, o.Case.Assert.FlakeStrict != nil && *o.Case.Assert.FlakeStrict)
 				if o.IsNewRegression {
 					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %q --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
 				}
