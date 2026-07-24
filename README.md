@@ -354,11 +354,20 @@ though the rest of the suite is gated more loosely.
 ## GitHub Actions
 
 ```yaml
-- uses: kabirnarang39/skillci/.github/actions/skillci@main
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.1.0
   with:
     path: path/to/your-skill
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
+
+Pin the action itself to a release tag (`@v0.1.0` above), not `@main` —
+`@main` floats onto whatever the action definition looks like next,
+silently changing your CI's behavior with no version control. The
+`version` input (defaults to `v0.1.0`) pins which `skillci` CLI binary
+gets installed, separately from the action reference; override it once a
+newer tag ships, or set it to `latest` if you deliberately want to float
+(not recommended for production — every consumer's CI would silently
+pick up whatever ships next, with no build reproducibility).
 
 Gates CI on **new** regressions only — a flaky non-deterministic miss won't fail your build every time. Commits both the status badge (`passing` / `partial` / `regressed`) and `.skillci/history.json` back into the checkout on every run, including runs where a regression is caught — that history is what lets the self-growing eval loop avoid re-proposing the same generated case every run and lets `skillci bisect` auto-detect its good/bad commits, so it needs to actually reach your repo. The action only commits locally within the checkout; add a push step in your own workflow (or `git-auto-commit-action`) to land it.
 
