@@ -360,7 +360,7 @@ though the rest of the suite is gated more loosely.
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-Gates CI on **new** regressions only — a flaky non-deterministic miss won't fail your build every time. Generates and commits a status badge (`passing` / `partial` / `regressed`).
+Gates CI on **new** regressions only — a flaky non-deterministic miss won't fail your build every time. Commits both the status badge (`passing` / `partial` / `regressed`) and `.skillci/history.json` back into the checkout on every run, including runs where a regression is caught — that history is what lets the self-growing eval loop avoid re-proposing the same generated case every run and lets `skillci bisect` auto-detect its good/bad commits, so it needs to actually reach your repo. The action only commits locally within the checkout; add a push step in your own workflow (or `git-auto-commit-action`) to land it.
 
 ## Optional: hosted dashboard
 
