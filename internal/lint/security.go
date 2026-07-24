@@ -58,10 +58,17 @@ func scanTextForAST01(file, content string) []Issue {
 var broadFilesystemRe = regexp.MustCompile(`(~/\.ssh|/etc/passwd|\.env\b|rm\s+-rf\s+/|chmod\s+777)`)
 
 // unrestrictedNetworkRe matches curl/wget/fetch/requests/http.Get(Post)
-// network calls and captures the host (and optional port) in group 1, so
-// callers can check the actual host rather than scanning the whole line —
-// RE2 has no lookahead, so this capture-then-check is the workaround.
-var unrestrictedNetworkRe = regexp.MustCompile(`(?i)(?:(?:curl|wget)\s+https?://|fetch\(\s*['"]https?://|requests\.(?:get|post)\(\s*['"]https?://|http\.(?:Get|Post)\(\s*['"]https?://)([a-zA-Z0-9.\-\[\]:]+)`)
+// network calls and captures the URL authority (optional userinfo, host,
+// and optional port) in group 1, so callers can check the actual host
+// rather than scanning the whole line — RE2 has no lookahead, so this
+// capture-then-check is the workaround. The capture includes '@' so a
+// userinfo prefix (user@ or user:pass@) is captured too rather than
+// truncating the match at the userinfo boundary; callers must split on
+// the last '@' to recover the real host before checking it. This closes
+// the two known "plant localhost somewhere the checker looks" bypasses
+// (query string, and userinfo) — it does not claim to close every
+// possible way to spoof or obscure a host.
+var unrestrictedNetworkRe = regexp.MustCompile(`(?i)(?:(?:curl|wget)\s+https?://|fetch\(\s*['"]https?://|requests\.(?:get|post)\(\s*['"]https?://|http\.(?:Get|Post)\(\s*['"]https?://)([a-zA-Z0-9.\-\[\]:@]+)`)
 
 // scanTextForAST03 scans arbitrary text content for over-privileged-access
 // patterns (AST03): broad filesystem access and unrestricted network calls.
@@ -76,7 +83,13 @@ func scanTextForAST03(file, content string) []Issue {
 			// Exclude localhost and 127.0.0.1 calls — checked against the
 			// captured host only, not the whole line (a substring check
 			// against the whole line is bypassable via path/query/comment).
+			// The capture may include a userinfo prefix (user@ or
+			// user:pass@); the real host is whatever follows the last '@',
+			// since that's what a URL parser would treat as the host.
 			host := strings.ToLower(m[1])
+			if atIdx := strings.LastIndex(host, "@"); atIdx != -1 {
+				host = host[atIdx+1:]
+			}
 			if idx := strings.IndexAny(host, ":"); idx != -1 {
 				host = host[:idx]
 			}
