@@ -109,6 +109,15 @@ func TestScanTextForAST01DynamicExecConcatBypass(t *testing.T) {
 	}
 }
 
+func TestScanTextForAST01NoDynamicExecOnLiteralWithEscapedQuote(t *testing.T) {
+	issues := scanTextForAST01("f.py", `eval("say \"hi\" + bye")`+"\n")
+	for _, iss := range issues {
+		if iss.Rule == "ast01-dynamic-exec-untrusted-input" {
+			t.Errorf("issues = %+v, want no ast01-dynamic-exec-untrusted-input issue: the escaped quote is still part of the same literal, not a real closing quote, so the '+' after it is still inside the literal", issues)
+		}
+	}
+}
+
 func TestScanTextForAST01NoDynamicExecOnLiteralWithPlusInsideQuotes(t *testing.T) {
 	issues := scanTextForAST01("f.py", `eval("1 + 1")`+"\n")
 	for _, iss := range issues {
