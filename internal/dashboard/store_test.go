@@ -71,3 +71,60 @@ func TestLeaderboard(t *testing.T) {
 		t.Error("Leaderboard() did not include the inserted skill")
 	}
 }
+
+func TestInsertAndFetchDimensionResults(t *testing.T) {
+	s := testStore(t)
+	skill := "dim-test-skill"
+	if err := s.InsertDimensionResult(context.Background(), DimensionResult{
+		Owner: "kabirnarang", Repo: "skillci", Skill: skill,
+		CommitSHA: "abc123", Model: "claude-sonnet-5",
+		DimensionKey: "segment", DimensionValue: "enterprise",
+		Passed: false, Timestamp: time.Now(),
+	}); err != nil {
+		t.Fatalf("InsertDimensionResult() error = %v", err)
+	}
+
+	rows, err := s.LatestDimensionResults(context.Background(), "kabirnarang", "skillci", skill)
+	if err != nil {
+		t.Fatalf("LatestDimensionResults() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("LatestDimensionResults() = %v, want 1 row", rows)
+	}
+	if rows[0].DimensionKey != "segment" || rows[0].DimensionValue != "enterprise" || rows[0].Passed {
+		t.Errorf("row = %+v, want segment=enterprise, passed=false", rows[0])
+	}
+}
+
+func TestLatestDimensionResultsReturnsOnlyLatestPerSlice(t *testing.T) {
+	s := testStore(t)
+	skill := "dim-latest-test-skill"
+	older := DimensionResult{
+		Owner: "kabirnarang", Repo: "skillci", Skill: skill,
+		CommitSHA: "old", Model: "claude-sonnet-5",
+		DimensionKey: "segment", DimensionValue: "enterprise",
+		Passed: false, Timestamp: time.Now().Add(-1 * time.Hour),
+	}
+	newer := older
+	newer.CommitSHA = "new"
+	newer.Passed = true
+	newer.Timestamp = time.Now()
+
+	if err := s.InsertDimensionResult(context.Background(), older); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertDimensionResult(context.Background(), newer); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := s.LatestDimensionResults(context.Background(), "kabirnarang", "skillci", skill)
+	if err != nil {
+		t.Fatalf("LatestDimensionResults() error = %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("LatestDimensionResults() = %v, want exactly 1 row (latest only), not both inserts", rows)
+	}
+	if !rows[0].Passed {
+		t.Errorf("row.Passed = false, want true — the newer insert should win, not the older one")
+	}
+}
