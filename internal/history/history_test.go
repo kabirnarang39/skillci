@@ -59,6 +59,38 @@ func TestLastRunEmpty(t *testing.T) {
 	}
 }
 
+func TestAppendCapsRetainedRuns(t *testing.T) {
+	h := History{}
+	// One more than the cap, each uniquely identifiable by CommitSHA.
+	for i := 0; i < maxRetainedRuns+1; i++ {
+		h.Append(Run{CommitSHA: string(rune('A'+i%26)) + string(rune(i))})
+	}
+	if len(h.Runs) != maxRetainedRuns {
+		t.Fatalf("len(Runs) = %d, want %d (the cap)", len(h.Runs), maxRetainedRuns)
+	}
+}
+
+func TestAppendCapKeepsNewestRunsNotOldest(t *testing.T) {
+	h := History{}
+	for i := 0; i < maxRetainedRuns+5; i++ {
+		h.Append(Run{CommitSHA: "run-" + string(rune('0'+i%10))})
+	}
+	last, ok := h.LastRun()
+	if !ok {
+		t.Fatal("LastRun() ok = false, want true")
+	}
+	// The very last Append call (index maxRetainedRuns+4) must survive the
+	// cap — proving the retained window is the newest runs, not just an
+	// arbitrary truncation to the front.
+	wantSuffix := "run-" + string(rune('0'+(maxRetainedRuns+4)%10))
+	if last.CommitSHA != wantSuffix {
+		t.Errorf("LastRun().CommitSHA = %q, want %q — the cap must drop the OLDEST runs, keeping the most recent one intact", last.CommitSHA, wantSuffix)
+	}
+	if len(h.Runs) != maxRetainedRuns {
+		t.Errorf("len(Runs) = %d, want %d", len(h.Runs), maxRetainedRuns)
+	}
+}
+
 func TestRunResult(t *testing.T) {
 	run := Run{Cases: []CaseResult{
 		{Name: "case-a", Model: "claude-sonnet-5", Passed: true},
