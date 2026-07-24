@@ -31,6 +31,14 @@ type Result struct {
 	// LatencyExceeded is set whenever MaxLatencyMs is exceeded, regardless
 	// of LatencyStrict — used for the non-blocking [LATENCY] report line.
 	LatencyExceeded bool
+	// FlakeVerdict is set only when FlakeRetries fired (the first attempt's
+	// trigger checks failed and FlakeRetries > 0): "confirmed_pass",
+	// "confirmed_fail", or "unstable" (no majority reached). Empty string
+	// means flake retries never triggered — either FlakeRetries wasn't
+	// set, or the first attempt already passed.
+	FlakeVerdict        string
+	FlakeAttemptsPassed int
+	FlakeAttemptsTotal  int
 }
 
 type skillMeta struct {
@@ -95,42 +103,33 @@ If, given the user's message, you would invoke this skill, begin your response w
 		LatencyMs:    msg.Latency.Milliseconds(),
 	}
 
-	if c.Assert.Triggered != nil && triggered != *c.Assert.Triggered {
-		result.Failures = append(result.Failures, fmt.Sprintf("triggered = %v, want %v", triggered, *c.Assert.Triggered))
-	}
-	for _, want := range c.Assert.Contains {
-		if !strings.Contains(content, want) {
-			result.Failures = append(result.Failures, fmt.Sprintf("response missing required substring %q", want))
+	triggerMsgs := checkTriggerAssertions(triggered, content, c.Assert)
+	budgetMsgs, latencyExceeded := checkBudgetAssertions(msg.InputTokens, msg.OutputTokens, result.LatencyMs, model, c.Assert, pricing)
+	result.LatencyExceeded = latencyExceeded
+
+	shouldFailOnTrigger := len(triggerMsgs) > 0
+	if len(triggerMsgs) > 0 && c.Assert.FlakeRetries != nil && *c.Assert.FlakeRetries > 0 {
+		verdict, passed, total, verr := voteOnFlakeRetries(ctx, client, model, systemPrompt, c)
+		if verr != nil {
+			return Result{}, verr
+		}
+		result.FlakeVerdict = verdict
+		result.FlakeAttemptsPassed = passed
+		result.FlakeAttemptsTotal = total
+		switch verdict {
+		case "confirmed_pass":
+			shouldFailOnTrigger = false
+		case "confirmed_fail":
+			shouldFailOnTrigger = true
+		case "unstable":
+			shouldFailOnTrigger = c.Assert.FlakeStrict != nil && *c.Assert.FlakeStrict
 		}
 	}
-	for _, unwanted := range c.Assert.NotContains {
-		if strings.Contains(content, unwanted) {
-			result.Failures = append(result.Failures, fmt.Sprintf("response contains forbidden substring %q", unwanted))
-		}
+
+	if shouldFailOnTrigger {
+		result.Failures = append(result.Failures, triggerMsgs...)
 	}
-	if c.Assert.MaxTokensLoaded != nil && msg.InputTokens > *c.Assert.MaxTokensLoaded {
-		result.Failures = append(result.Failures, fmt.Sprintf("input_tokens = %d, exceeds max_tokens_loaded %d", msg.InputTokens, *c.Assert.MaxTokensLoaded))
-	}
-	if c.Assert.MaxOutputTokens != nil && msg.OutputTokens > *c.Assert.MaxOutputTokens {
-		result.Failures = append(result.Failures, fmt.Sprintf("output_tokens = %d, exceeds max_output_tokens %d", msg.OutputTokens, *c.Assert.MaxOutputTokens))
-	}
-	if c.Assert.MaxLatencyMs != nil && result.LatencyMs > *c.Assert.MaxLatencyMs {
-		result.LatencyExceeded = true
-		if c.Assert.LatencyStrict != nil && *c.Assert.LatencyStrict {
-			result.Failures = append(result.Failures, fmt.Sprintf("latency = %dms, exceeds max_latency_ms %d", result.LatencyMs, *c.Assert.MaxLatencyMs))
-		}
-	}
-	if c.Assert.MaxCostUSD != nil {
-		price, ok := pricing[model]
-		if !ok {
-			result.Failures = append(result.Failures, fmt.Sprintf("no pricing configured for model %q — add it under pricing: in .skillci.yaml", model))
-		} else {
-			cost := float64(msg.InputTokens)/1e6*price.InputPerMillion + float64(msg.OutputTokens)/1e6*price.OutputPerMillion
-			if cost > *c.Assert.MaxCostUSD {
-				result.Failures = append(result.Failures, fmt.Sprintf("estimated cost = $%.4f, exceeds max_cost_usd %.4f", cost, *c.Assert.MaxCostUSD))
-			}
-		}
-	}
+	result.Failures = append(result.Failures, budgetMsgs...)
 
 	// Only capture/compare a snapshot when every other assertion has
 	// already passed. Otherwise a case that e.g. unexpectedly failed to
@@ -190,6 +189,104 @@ If, given the user's message, you would invoke this skill, begin your response w
 
 	result.Passed = len(result.Failures) == 0
 	return result, nil
+}
+
+// checkTriggerAssertions checks Triggered/Contains/NotContains — the
+// assertions eligible for FlakeRetries voting — against a single
+// attempt's response, returning failure messages (nil when all pass).
+func checkTriggerAssertions(triggered bool, content string, assert evalspec.Assertions) []string {
+	var msgs []string
+	if assert.Triggered != nil && triggered != *assert.Triggered {
+		msgs = append(msgs, fmt.Sprintf("triggered = %v, want %v", triggered, *assert.Triggered))
+	}
+	for _, want := range assert.Contains {
+		if !strings.Contains(content, want) {
+			msgs = append(msgs, fmt.Sprintf("response missing required substring %q", want))
+		}
+	}
+	for _, unwanted := range assert.NotContains {
+		if strings.Contains(content, unwanted) {
+			msgs = append(msgs, fmt.Sprintf("response contains forbidden substring %q", unwanted))
+		}
+	}
+	return msgs
+}
+
+// checkBudgetAssertions checks MaxTokensLoaded/MaxOutputTokens/
+// MaxLatencyMs/MaxCostUSD — always evaluated once, against the first
+// attempt only, and never retried by FlakeRetries.
+func checkBudgetAssertions(inputTokens, outputTokens int, latencyMs int64, model string, assert evalspec.Assertions, pricing map[string]config.ModelPricing) (msgs []string, latencyExceeded bool) {
+	if assert.MaxTokensLoaded != nil && inputTokens > *assert.MaxTokensLoaded {
+		msgs = append(msgs, fmt.Sprintf("input_tokens = %d, exceeds max_tokens_loaded %d", inputTokens, *assert.MaxTokensLoaded))
+	}
+	if assert.MaxOutputTokens != nil && outputTokens > *assert.MaxOutputTokens {
+		msgs = append(msgs, fmt.Sprintf("output_tokens = %d, exceeds max_output_tokens %d", outputTokens, *assert.MaxOutputTokens))
+	}
+	if assert.MaxLatencyMs != nil && latencyMs > *assert.MaxLatencyMs {
+		latencyExceeded = true
+		if assert.LatencyStrict != nil && *assert.LatencyStrict {
+			msgs = append(msgs, fmt.Sprintf("latency = %dms, exceeds max_latency_ms %d", latencyMs, *assert.MaxLatencyMs))
+		}
+	}
+	if assert.MaxCostUSD != nil {
+		price, ok := pricing[model]
+		if !ok {
+			msgs = append(msgs, fmt.Sprintf("no pricing configured for model %q — add it under pricing: in .skillci.yaml", model))
+		} else {
+			cost := float64(inputTokens)/1e6*price.InputPerMillion + float64(outputTokens)/1e6*price.OutputPerMillion
+			if cost > *assert.MaxCostUSD {
+				msgs = append(msgs, fmt.Sprintf("estimated cost = $%.4f, exceeds max_cost_usd %.4f", cost, *assert.MaxCostUSD))
+			}
+		}
+	}
+	return msgs, latencyExceeded
+}
+
+// voteOnFlakeRetries re-runs c's prompt up to c.Assert.FlakeRetries
+// additional times (the caller has already made attempt 1, which failed
+// its trigger checks — that's why this was called), taking a majority
+// verdict across all attempts. It stops making further calls as soon as
+// a majority is mathematically decided, to avoid spending the full
+// budget when the outcome can no longer change.
+func voteOnFlakeRetries(ctx context.Context, client *anthropic.Client, model, systemPrompt string, c evalspec.Case) (verdict string, passed, total int, err error) {
+	maxAttempts := 1 + *c.Assert.FlakeRetries
+	attemptPassed := []bool{false} // attempt 1 already known to have failed
+
+	for len(attemptPassed) < maxAttempts {
+		passes, fails := countPassFail(attemptPassed)
+		remaining := maxAttempts - len(attemptPassed)
+		if passes > fails+remaining || fails > passes+remaining {
+			break
+		}
+		msg, sendErr := client.Send(ctx, model, systemPrompt, c.Prompt)
+		if sendErr != nil {
+			return "", 0, 0, sendErr
+		}
+		triggered, content := parseTriggerMarker(msg.Text)
+		attemptPassed = append(attemptPassed, len(checkTriggerAssertions(triggered, content, c.Assert)) == 0)
+	}
+
+	passes, fails := countPassFail(attemptPassed)
+	switch {
+	case passes > fails:
+		verdict = "confirmed_pass"
+	case fails > passes:
+		verdict = "confirmed_fail"
+	default:
+		verdict = "unstable"
+	}
+	return verdict, passes, len(attemptPassed), nil
+}
+
+func countPassFail(attempts []bool) (passes, fails int) {
+	for _, p := range attempts {
+		if p {
+			passes++
+		} else {
+			fails++
+		}
+	}
+	return passes, fails
 }
 
 // parseTriggerMarker splits the model's response into whether the skill
