@@ -174,13 +174,13 @@ assert:
 Only fires when the FIRST attempt's trigger checks fail — a passing case
 never pays the extra cost. Up to `1 + flake_retries` total attempts are
 made, stopping early once a majority is mathematically decided (e.g. 2
-passing attempts out of 3 possible stops before the 3rd call). Budget
+failing attempts out of 3 possible stops before the 3rd call). Budget
 assertions (`max_tokens_loaded`, `max_output_tokens`, `max_latency_ms`,
 `max_cost_usd`) are never retried — they're checked once, same as
 always, since rerunning can't change a token-count-derived cost or
 latency reading into something more "correct."
 
-An even `flake_retries` value can tie (e.g. `flake_retries: 1` → 2 total
+An odd `flake_retries` value can tie (e.g. `flake_retries: 1` → 2 total
 attempts, 1-1). A tie is informational only by default:
 
 ```

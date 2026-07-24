@@ -870,6 +870,53 @@ func TestRunCaseFlakeRetriesConfirmedPassAfterInitialFailure(t *testing.T) {
 	}
 }
 
+func TestRunCaseFlakeRetriesConfirmedPassSkipsSnapshot(t *testing.T) {
+	// Regression test for the flake_retries + snapshot interaction: attempt 1
+	// fails its trigger check (that's what fires a retry at all), attempts
+	// 2-3 pass, and the vote resolves to confirmed_pass. Attempt 1's content
+	// is a REJECTED, failing response — it must never be saved as the golden
+	// baseline just because result.Failures ends up empty. Snapshotting
+	// should be skipped entirely whenever a flake retry fired, not just when
+	// other assertions fail (see TestRunCaseSnapshotSkippedWhenOtherAssertionFails
+	// for that sibling case).
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true\nA haiku about autumn leaves.",
+		"SKILLCI_TRIGGERED: true\nA haiku about autumn leaves.",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "flake-snap-case",
+		Prompt: "write a haiku",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2), Snapshot: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if result.FlakeVerdict != "confirmed_pass" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_pass", result.FlakeVerdict)
+	}
+	if *callCount != 3 {
+		t.Errorf("callCount = %d, want 3", *callCount)
+	}
+	if result.SnapshotDiff != nil {
+		t.Errorf("SnapshotDiff = %+v, want nil — snapshotting must be skipped when flake retries fired", result.SnapshotDiff)
+	}
+	if _, ok, err := snapshot.Load(dir, "flake-snap-case", "claude-sonnet-5"); err != nil {
+		t.Fatalf("snapshot.Load() error = %v", err)
+	} else if ok {
+		t.Error("a golden file was saved despite flake retries firing — attempt 1's rejected content was poisoned into the baseline")
+	}
+}
+
 func TestRunCaseFlakeRetriesConfirmedFail(t *testing.T) {
 	// FlakeRetries: 2 allows at most 3 total attempts. The first 2 attempts
 	// both fail, and with only 1 attempt remaining a pass there could not

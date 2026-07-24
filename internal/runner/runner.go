@@ -134,8 +134,15 @@ If, given the user's message, you would invoke this skill, begin your response w
 	// Only capture/compare a snapshot when every other assertion has
 	// already passed. Otherwise a case that e.g. unexpectedly failed to
 	// trigger would save its empty/garbage response as the golden
-	// baseline (see final-review bug: empty-golden poisoning).
-	if len(result.Failures) == 0 && c.Assert.Snapshot != nil && *c.Assert.Snapshot {
+	// baseline (see final-review bug: empty-golden poisoning). The
+	// FlakeVerdict == "" check guards the same hole for a subtler case: if
+	// flake retries fired at all, attempt 1's `content` is the one that
+	// FAILED its trigger check (that's what triggers a retry) — even a
+	// confirmed_pass verdict doesn't make attempt 1's content
+	// representative, since the pass came from a later attempt. Skip
+	// snapshotting entirely whenever retries fired; there's no reliable
+	// sample to snapshot until the case passes cleanly on attempt 1.
+	if len(result.Failures) == 0 && result.FlakeVerdict == "" && c.Assert.Snapshot != nil && *c.Assert.Snapshot {
 		golden, ok, err := snapshot.Load(skillDir, c.Name, model)
 		if err != nil {
 			return Result{}, err
