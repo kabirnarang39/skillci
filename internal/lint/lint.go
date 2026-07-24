@@ -193,6 +193,41 @@ func LintEvals(dir string) ([]Issue, error) {
 				Msg:  fmt.Sprintf("case %q sets fuzz_strict: true without fuzz: true — fuzz_strict has no effect unless fuzz is also enabled", c.Name),
 			})
 		}
+		if c.Assert.SnapshotStrict != nil && *c.Assert.SnapshotStrict && (c.Assert.Snapshot == nil || !*c.Assert.Snapshot) {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "snapshot-strict-without-snapshot",
+				Msg:  fmt.Sprintf("case %q sets snapshot_strict: true without snapshot: true — snapshot_strict has no effect unless snapshot is also enabled", c.Name),
+			})
+		}
+		if c.Assert.LatencyStrict != nil && *c.Assert.LatencyStrict && c.Assert.MaxLatencyMs == nil {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "latency-strict-without-max-latency-ms",
+				Msg:  fmt.Sprintf("case %q sets latency_strict: true without max_latency_ms — latency_strict has no effect unless max_latency_ms is also set", c.Name),
+			})
+		}
+		// Mirrors runner.go's own gating condition (*FlakeRetries > 0) so
+		// this rule fires on flake_retries: 0 too, not just unset — a
+		// zero value is inert for the same reason nil is.
+		if c.Assert.FlakeStrict != nil && *c.Assert.FlakeStrict && (c.Assert.FlakeRetries == nil || *c.Assert.FlakeRetries <= 0) {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "flake-strict-without-flake-retries",
+				Msg:  fmt.Sprintf("case %q sets flake_strict: true without a positive flake_retries — flake_strict has no effect unless flake_retries is also set above 0", c.Name),
+			})
+		}
+		if c.Assert.JudgeStrict != nil && *c.Assert.JudgeStrict && len(c.Assert.Judge) == 0 {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "judge-strict-without-judge",
+				Msg:  fmt.Sprintf("case %q sets judge_strict: true without any judge criteria — judge_strict has no effect unless judge is also set", c.Name),
+			})
+		}
 	}
 	return issues, nil
 }
