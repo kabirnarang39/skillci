@@ -35,6 +35,7 @@ Every other kind of software has a safety net for this — tests that fail the m
 
 ```bash
 brew tap kabirnarang39/skillci
+brew trust kabirnarang39/skillci  # newer Homebrew requires explicitly trusting third-party taps
 brew install --cask skillci
 ```
 
