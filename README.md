@@ -38,6 +38,7 @@ skillci init path/to/your-skill
 # (oversized body, duplicate instructions, too many/too-large referenced
 # files)
 skillci check path/to/your-skill
+```
 
 `skillci check`'s security rules are mapped directly to
 [OWASP's Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/):
@@ -55,6 +56,7 @@ user-configurable, and — like the security rules — purely local pattern
 matching, not a judgment call about whether a skill is *good*, just
 whether it's carrying more than it needs to.
 
+```bash
 # Run the eval suite against one model
 skillci eval path/to/your-skill --model claude-sonnet-5
 
