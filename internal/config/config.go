@@ -9,6 +9,18 @@ import (
 type Config struct {
 	Models []string `yaml:"models"`
 	FailOn string   `yaml:"fail_on"`
+	// Pricing is always user-supplied — skillci never hardcodes or
+	// maintains a per-model price table, since Anthropic can reprice
+	// without notice and a stale table would silently misreport cost.
+	// A model with no entry here simply can't use max_cost_usd.
+	Pricing map[string]ModelPricing `yaml:"pricing"`
+}
+
+// ModelPricing is one model's per-million-token rates, matching
+// Anthropic's own pricing convention.
+type ModelPricing struct {
+	InputPerMillion  float64 `yaml:"input_per_million"`
+	OutputPerMillion float64 `yaml:"output_per_million"`
 }
 
 func Default() Config {
