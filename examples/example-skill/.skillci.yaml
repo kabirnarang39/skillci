@@ -1,0 +1,15 @@
+models: [claude-sonnet-5]
+fail_on: regression
+
+# Illustrative example rates, not a live Anthropic price feed — see
+# internal/config/config.go: skillci never hardcodes or maintains a
+# pricing table itself, since Anthropic can reprice without notice.
+pricing:
+  claude-sonnet-5:
+    input_per_million: 3.0
+    output_per_million: 15.0
+
+# Any case tagged dimensions: {segment: enterprise} (see evals/dimensions.yaml)
+# fails CI on any failure, regardless of the looser fail_on: regression above.
+strict_dimensions:
+  segment: [enterprise]

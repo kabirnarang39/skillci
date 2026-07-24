@@ -1,0 +1,6 @@
+name: "example-flake-retries"
+prompt: "I bumped the Go version in go.mod from 1.24 to 1.25, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+  flake_retries: 2
