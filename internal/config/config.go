@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"gopkg.in/yaml.v3"
 )
@@ -52,7 +53,16 @@ func Load(path string) (Config, error) {
 	if cfg.FailOn == "" {
 		cfg.FailOn = Default().FailOn
 	}
-	for model, price := range cfg.Pricing {
+	// Sorted iteration: map order is nondeterministic in Go, and if
+	// multiple pricing entries are invalid at once the error should
+	// always name the same one on every run, not an arbitrary one.
+	models := make([]string, 0, len(cfg.Pricing))
+	for model := range cfg.Pricing {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	for _, model := range models {
+		price := cfg.Pricing[model]
 		if price.InputPerMillion <= 0 || price.OutputPerMillion <= 0 {
 			return Config{}, fmt.Errorf("pricing entry for %q is incomplete: input_per_million and output_per_million must both be > 0 (got %v/%v)", model, price.InputPerMillion, price.OutputPerMillion)
 		}
