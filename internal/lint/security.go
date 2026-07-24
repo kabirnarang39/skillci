@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 var pipeToShellRe = regexp.MustCompile(`(?i)\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(sh|bash|zsh)\b`)
@@ -172,6 +174,122 @@ func caseMismatchIssue(skillPath, dir, refPath string, line int) *Issue {
 		return nil
 	}
 	return nil
+}
+
+const maxFrontmatterBytes = 4096
+const maxFrontmatterDepth = 3
+
+// scanFrontmatterSecurity parses fm as a generic yaml.Node tree (not the
+// typed frontmatter struct LintSkill uses, which silently drops unknown
+// fields and duplicate keys) and checks for AST04 structural issues. A
+// frontmatter that fails to parse at all returns no issues here — that
+// failure is already reported by LintSkill's own invalid-frontmatter path.
+//
+// Empirically, yaml.Unmarshal into a generic *yaml.Node does NOT error on
+// duplicate top-level keys — it preserves both key/value pairs in the
+// mapping node's Content slice (unlike unmarshaling into a typed struct or
+// map, which does reject duplicates). So findDuplicateKey can walk the
+// tree directly; no error-path workaround is needed here.
+func scanFrontmatterSecurity(skillPath, fm string) []Issue {
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(fm), &node); err != nil {
+		return nil
+	}
+
+	var issues []Issue
+
+	oversizedReasons := []string{}
+	if len(fm) > maxFrontmatterBytes {
+		oversizedReasons = append(oversizedReasons, fmt.Sprintf("%d bytes exceeds the %d-byte budget", len(fm), maxFrontmatterBytes))
+	}
+	if depth := nodeDepth(&node); depth > maxFrontmatterDepth {
+		oversizedReasons = append(oversizedReasons, fmt.Sprintf("nesting depth %d exceeds the %d-level budget", depth, maxFrontmatterDepth))
+	}
+	if len(oversizedReasons) > 0 {
+		issues = append(issues, Issue{File: skillPath, Line: 1, Rule: "ast04-oversized-frontmatter", Msg: "frontmatter is oversized: " + strings.Join(oversizedReasons, "; ")})
+	}
+
+	if hasAnchorOrAlias(&node) {
+		issues = append(issues, Issue{File: skillPath, Line: 1, Rule: "ast04-yaml-anchor-alias", Msg: "frontmatter uses a YAML anchor/alias, a known parser-expansion-bomb technique"})
+	}
+
+	if dupKey := findDuplicateKey(&node); dupKey != "" {
+		issues = append(issues, Issue{File: skillPath, Line: 1, Rule: "ast04-duplicate-frontmatter-key", Msg: fmt.Sprintf("frontmatter has a duplicate key %q", dupKey)})
+	}
+
+	for _, field := range topLevelKeys(&node) {
+		if field != "name" && field != "description" {
+			issues = append(issues, Issue{File: skillPath, Line: 1, Rule: "ast04-unexpected-frontmatter-field", Msg: fmt.Sprintf("frontmatter has an unexpected field %q (only name/description are part of the documented spec)", field)})
+		}
+	}
+
+	return issues
+}
+
+// mappingRoot unwraps the DocumentNode yaml.Unmarshal produces when
+// parsing into a generic *yaml.Node, returning the actual root mapping.
+func mappingRoot(n *yaml.Node) *yaml.Node {
+	if n.Kind == yaml.DocumentNode && len(n.Content) > 0 {
+		return n.Content[0]
+	}
+	return n
+}
+
+func nodeDepth(n *yaml.Node) int {
+	root := mappingRoot(n)
+	if len(root.Content) == 0 {
+		return 0
+	}
+	max := 0
+	for _, c := range root.Content {
+		if d := nodeDepth(c); d > max {
+			max = d
+		}
+	}
+	return max + 1
+}
+
+func hasAnchorOrAlias(n *yaml.Node) bool {
+	if n == nil {
+		return false
+	}
+	if n.Anchor != "" || n.Kind == yaml.AliasNode {
+		return true
+	}
+	for _, c := range n.Content {
+		if hasAnchorOrAlias(c) {
+			return true
+		}
+	}
+	return false
+}
+
+func findDuplicateKey(n *yaml.Node) string {
+	root := mappingRoot(n)
+	if root.Kind != yaml.MappingNode {
+		return ""
+	}
+	seen := map[string]bool{}
+	for i := 0; i < len(root.Content); i += 2 {
+		key := root.Content[i].Value
+		if seen[key] {
+			return key
+		}
+		seen[key] = true
+	}
+	return ""
+}
+
+func topLevelKeys(n *yaml.Node) []string {
+	root := mappingRoot(n)
+	if root.Kind != yaml.MappingNode {
+		return nil
+	}
+	var keys []string
+	for i := 0; i < len(root.Content); i += 2 {
+		keys = append(keys, root.Content[i].Value)
+	}
+	return keys
 }
 
 var binaryExts = map[string]bool{

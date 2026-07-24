@@ -2,6 +2,7 @@ package lint
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -376,5 +377,115 @@ func TestScanReferencedFileContentSkipsOversizedFile(t *testing.T) {
 
 	if issues := scanReferencedFileContent(dir, "scripts/huge.sh"); issues != nil {
 		t.Errorf("issues = %+v, want nil for a file over the 1MB scan cap", issues)
+	}
+}
+
+func TestScanFrontmatterSecurityDetectsAnchorAlias(t *testing.T) {
+	fm := "name: &n my-skill\ndescription: Does a thing.\nalias: *n\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-yaml-anchor-alias" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast04-yaml-anchor-alias issue", issues)
+	}
+}
+
+func TestScanFrontmatterSecurityNoAnchorIssueOnPlainYAML(t *testing.T) {
+	fm := "name: my-skill\ndescription: Does a thing.\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	for _, iss := range issues {
+		if iss.Rule == "ast04-yaml-anchor-alias" {
+			t.Errorf("issues = %+v, want no ast04-yaml-anchor-alias issue for plain frontmatter", issues)
+		}
+	}
+}
+
+func TestScanFrontmatterSecurityDetectsDuplicateKey(t *testing.T) {
+	fm := "name: my-skill\nname: another-name\ndescription: Does a thing.\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-duplicate-frontmatter-key" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast04-duplicate-frontmatter-key issue", issues)
+	}
+}
+
+func TestScanFrontmatterSecurityNoDuplicateIssueOnUniqueKeys(t *testing.T) {
+	fm := "name: my-skill\ndescription: Does a thing.\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	for _, iss := range issues {
+		if iss.Rule == "ast04-duplicate-frontmatter-key" {
+			t.Errorf("issues = %+v, want no ast04-duplicate-frontmatter-key issue for unique keys", issues)
+		}
+	}
+}
+
+func TestScanFrontmatterSecurityDetectsOversizedByBytes(t *testing.T) {
+	fm := "name: my-skill\ndescription: " + strings.Repeat("a", 5000) + "\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-oversized-frontmatter" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast04-oversized-frontmatter issue for a >4096-byte frontmatter", issues)
+	}
+}
+
+func TestScanFrontmatterSecurityDetectsOversizedByDepth(t *testing.T) {
+	fm := "name: my-skill\ndescription: Does a thing.\nmeta:\n  a:\n    b:\n      c: deep\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-oversized-frontmatter" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast04-oversized-frontmatter issue for nesting depth > 3", issues)
+	}
+}
+
+func TestScanFrontmatterSecurityNoOversizedIssueOnNormalFrontmatter(t *testing.T) {
+	fm := "name: my-skill\ndescription: Does a thing.\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	for _, iss := range issues {
+		if iss.Rule == "ast04-oversized-frontmatter" {
+			t.Errorf("issues = %+v, want no ast04-oversized-frontmatter issue for a normal-sized flat frontmatter", issues)
+		}
+	}
+}
+
+func TestScanFrontmatterSecurityDetectsUnexpectedField(t *testing.T) {
+	fm := "name: my-skill\ndescription: Does a thing.\nallow_network: true\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-unexpected-frontmatter-field" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast04-unexpected-frontmatter-field issue", issues)
+	}
+}
+
+func TestScanFrontmatterSecurityNoUnexpectedFieldIssueOnNameDescription(t *testing.T) {
+	fm := "name: my-skill\ndescription: Does a thing.\n"
+	issues := scanFrontmatterSecurity("f.md", fm)
+	for _, iss := range issues {
+		if iss.Rule == "ast04-unexpected-frontmatter-field" {
+			t.Errorf("issues = %+v, want no ast04-unexpected-frontmatter-field issue for only name/description", issues)
+		}
 	}
 }
