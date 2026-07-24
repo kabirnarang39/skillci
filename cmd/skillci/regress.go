@@ -12,6 +12,7 @@ import (
 	"github.com/kabirnarang39/skillci/internal/badge"
 	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/gitutil"
 	"github.com/kabirnarang39/skillci/internal/history"
 	"github.com/kabirnarang39/skillci/internal/regress"
 	"github.com/kabirnarang39/skillci/internal/upload"
@@ -79,6 +80,9 @@ func newRegressCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", o.Result.SnapshotDiff.Render)
 				}
 				printFuzzFindings(cmd.OutOrStdout(), o.Result.FuzzFindings)
+				if o.IsNewRegression {
+					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %s --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
+				}
 			}
 
 			if len(report.GeneratedCases) > 0 {
@@ -98,6 +102,13 @@ func newRegressCmd() *cobra.Command {
 
 			newRun.Timestamp = time.Now()
 			newRun.CommitSHA = os.Getenv("GITHUB_SHA")
+			if newRun.CommitSHA == "" {
+				// Best-effort: not every skill directory is inside a git
+				// repository, and regress must keep working when it isn't.
+				if sha, err := gitutil.RevParseHEAD(dir); err == nil {
+					newRun.CommitSHA = sha
+				}
+			}
 
 			hist.Append(newRun)
 			if err := hist.Save(historyPath); err != nil {
