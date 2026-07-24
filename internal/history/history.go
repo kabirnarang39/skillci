@@ -48,8 +48,21 @@ func Load(path string) (History, error) {
 	return h, nil
 }
 
+// maxRetainedRuns bounds how many historical runs Append keeps, so
+// .skillci/history.json — a git-committed artifact — doesn't grow
+// unbounded across a project's lifetime. Matches the same 200-run window
+// internal/dashboard/store.go's SkillHistory query already treats as
+// "recent history." Only the oldest runs are dropped; bisect's auto
+// good/bad detection still works over whatever window is retained, and a
+// regression older than that needs an explicit --good override, which
+// the CLI already supports.
+const maxRetainedRuns = 200
+
 func (h *History) Append(r Run) {
 	h.Runs = append(h.Runs, r)
+	if len(h.Runs) > maxRetainedRuns {
+		h.Runs = h.Runs[len(h.Runs)-maxRetainedRuns:]
+	}
 }
 
 func (h History) Save(path string) error {
