@@ -157,14 +157,39 @@ func newRegressCmd() *cobra.Command {
 						passedByModel[c.Model] = passed && c.Passed
 					}
 				}
+				// Same AND-aggregation as passedByModel above, re-scoped to
+				// cases carrying each dimension key/value pair: keyed by
+				// model, then "key\x00value" (dimension keys/values are
+				// user-supplied free text, so a real separator character
+				// avoids collisions a plain "+" or ":" join could hit).
+				type dimSlice struct{ model, key, value string }
+				passedByDimSlice := make(map[dimSlice]bool)
+				for _, o := range report.Outcomes {
+					for k, v := range o.Case.Dimensions {
+						d := dimSlice{model: o.Model, key: k, value: v}
+						if passed, ok := passedByDimSlice[d]; !ok {
+							passedByDimSlice[d] = o.Result.Passed
+						} else {
+							passedByDimSlice[d] = passed && o.Result.Passed
+						}
+					}
+				}
 				for _, model := range cfg.Models {
 					passed, ok := passedByModel[model]
 					if !ok {
 						continue
 					}
+					var dims []upload.DimensionEntry
+					for d, dimPassed := range passedByDimSlice {
+						if d.model != model {
+							continue
+						}
+						dims = append(dims, upload.DimensionEntry{Key: d.key, Value: d.value, Passed: dimPassed})
+					}
 					err := upload.Send(context.Background(), dashboardURL, token, upload.Result{
 						RepoOwner: owner, Repo: repoName, Skill: skillName,
 						CommitSHA: commitSHA, Model: model, Passed: passed,
+						Dimensions: dims,
 					})
 					if err != nil {
 						// per design §8: a dashboard hiccup must never break CI

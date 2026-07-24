@@ -45,3 +45,30 @@ func TestSendReturnsErrorOnServerFailure(t *testing.T) {
 		t.Error("Send() error = nil, want error on 500")
 	}
 }
+
+func TestSendPostsDimensionEntries(t *testing.T) {
+	var gotBody map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	err := Send(context.Background(), srv.URL, "secret-token", Result{
+		RepoOwner: "kabirnarang", Repo: "skillci", Skill: "pr-review",
+		CommitSHA: "abc123", Model: "claude-sonnet-5", Passed: true,
+		Dimensions: []DimensionEntry{{Key: "segment", Value: "enterprise", Passed: true}},
+	})
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	dims, ok := gotBody["dimensions"].([]any)
+	if !ok || len(dims) != 1 {
+		t.Fatalf("body[dimensions] = %v, want a 1-element array", gotBody["dimensions"])
+	}
+	entry := dims[0].(map[string]any)
+	if entry["key"] != "segment" || entry["value"] != "enterprise" {
+		t.Errorf("dimension entry = %v, want key=segment value=enterprise", entry)
+	}
+}
