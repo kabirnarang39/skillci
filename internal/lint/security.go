@@ -7,6 +7,7 @@
 package lint
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,4 +172,48 @@ func caseMismatchIssue(skillPath, dir, refPath string, line int) *Issue {
 		return nil
 	}
 	return nil
+}
+
+var binaryExts = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".pdf": true,
+	".zip": true, ".exe": true, ".bin": true,
+}
+
+const maxScanBytes = 1 << 20 // 1MB
+
+func looksBinary(data []byte) bool {
+	n := len(data)
+	if n > 512 {
+		n = 512
+	}
+	return bytes.IndexByte(data[:n], 0) != -1
+}
+
+// scanReferencedFileContent reads refPath (relative to dir) and runs the
+// AST01/AST03 content scanners against it, if the file exists, isn't
+// binary, and is under the 1MB scan cap. Returns nil (no issues, no
+// error) for any file that doesn't qualify — a missing file is already
+// reported by missing-referenced-file, and skillci intentionally doesn't
+// scan binary or oversized files.
+func scanReferencedFileContent(dir, refPath string) []Issue {
+	if binaryExts[strings.ToLower(filepath.Ext(refPath))] {
+		return nil
+	}
+	full := filepath.Join(dir, refPath)
+	info, err := os.Stat(full)
+	if err != nil || info.Size() > maxScanBytes {
+		return nil
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return nil
+	}
+	if looksBinary(data) {
+		return nil
+	}
+	content := string(data)
+	var issues []Issue
+	issues = append(issues, scanTextForAST01(full, content)...)
+	issues = append(issues, scanTextForAST03(full, content)...)
+	return issues
 }
