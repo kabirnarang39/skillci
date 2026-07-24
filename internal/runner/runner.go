@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/fuzz"
 	"github.com/kabirnarang39/skillci/internal/snapshot"
@@ -23,6 +24,13 @@ type Result struct {
 	InputTokens  int
 	SnapshotDiff *snapshot.Diff
 	FuzzFindings []fuzz.Finding
+	// OutputTokens and LatencyMs are always populated, independent of
+	// whether any assertion uses them.
+	OutputTokens int
+	LatencyMs    int64
+	// LatencyExceeded is set whenever MaxLatencyMs is exceeded, regardless
+	// of LatencyStrict — used for the non-blocking [LATENCY] report line.
+	LatencyExceeded bool
 }
 
 type skillMeta struct {
@@ -57,7 +65,7 @@ const triggerMarkerPrefix = "SKILLCI_TRIGGERED:"
 // only the skill's name+description (a proxy for progressive-disclosure
 // candidate matching — see Task 7 header note), then checks the response
 // against the case's assertions.
-func RunCase(ctx context.Context, client *anthropic.Client, skillDir, model string, c evalspec.Case) (Result, error) {
+func RunCase(ctx context.Context, client *anthropic.Client, skillDir, model string, c evalspec.Case, pricing map[string]config.ModelPricing) (Result, error) {
 	meta, err := readSkillMeta(skillDir)
 	if err != nil {
 		return Result{}, err
@@ -79,10 +87,12 @@ If, given the user's message, you would invoke this skill, begin your response w
 	triggered, content := parseTriggerMarker(msg.Text)
 
 	result := Result{
-		CaseName:    c.Name,
-		Model:       model,
-		Triggered:   triggered,
-		InputTokens: msg.InputTokens,
+		CaseName:     c.Name,
+		Model:        model,
+		Triggered:    triggered,
+		InputTokens:  msg.InputTokens,
+		OutputTokens: msg.OutputTokens,
+		LatencyMs:    msg.Latency.Milliseconds(),
 	}
 
 	if c.Assert.Triggered != nil && triggered != *c.Assert.Triggered {
@@ -100,6 +110,26 @@ If, given the user's message, you would invoke this skill, begin your response w
 	}
 	if c.Assert.MaxTokensLoaded != nil && msg.InputTokens > *c.Assert.MaxTokensLoaded {
 		result.Failures = append(result.Failures, fmt.Sprintf("input_tokens = %d, exceeds max_tokens_loaded %d", msg.InputTokens, *c.Assert.MaxTokensLoaded))
+	}
+	if c.Assert.MaxOutputTokens != nil && msg.OutputTokens > *c.Assert.MaxOutputTokens {
+		result.Failures = append(result.Failures, fmt.Sprintf("output_tokens = %d, exceeds max_output_tokens %d", msg.OutputTokens, *c.Assert.MaxOutputTokens))
+	}
+	if c.Assert.MaxLatencyMs != nil && result.LatencyMs > *c.Assert.MaxLatencyMs {
+		result.LatencyExceeded = true
+		if c.Assert.LatencyStrict != nil && *c.Assert.LatencyStrict {
+			result.Failures = append(result.Failures, fmt.Sprintf("latency = %dms, exceeds max_latency_ms %d", result.LatencyMs, *c.Assert.MaxLatencyMs))
+		}
+	}
+	if c.Assert.MaxCostUSD != nil {
+		price, ok := pricing[model]
+		if !ok {
+			result.Failures = append(result.Failures, fmt.Sprintf("no pricing configured for model %q — add it under pricing: in .skillci.yaml", model))
+		} else {
+			cost := float64(msg.InputTokens)/1e6*price.InputPerMillion + float64(msg.OutputTokens)/1e6*price.OutputPerMillion
+			if cost > *c.Assert.MaxCostUSD {
+				result.Failures = append(result.Failures, fmt.Sprintf("estimated cost = $%.4f, exceeds max_cost_usd %.4f", cost, *c.Assert.MaxCostUSD))
+			}
+		}
 	}
 
 	// Only capture/compare a snapshot when every other assertion has

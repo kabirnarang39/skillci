@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/runner"
 	"github.com/spf13/cobra"
@@ -33,6 +34,10 @@ func newEvalCmd() *cobra.Command {
 				client = client.WithBaseURL(base)
 			}
 
+			cfg, err := config.Load(filepath.Join(dir, ".skillci.yaml"))
+			if err != nil {
+				return err
+			}
 			cases, err := evalspec.LoadDir(filepath.Join(dir, "evals"))
 			if err != nil {
 				return err
@@ -44,7 +49,7 @@ func newEvalCmd() *cobra.Command {
 
 			failed := 0
 			for _, c := range cases {
-				result, err := runner.RunCase(context.Background(), client, dir, model, c)
+				result, err := runner.RunCase(context.Background(), client, dir, model, c, cfg.Pricing)
 				if err != nil {
 					return fmt.Errorf("running case %s: %w", c.Name, err)
 				}
