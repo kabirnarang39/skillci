@@ -45,6 +45,26 @@ func truePtr() *bool { v := true; return &v }
 
 func falsePtr() *bool { v := false; return &v }
 
+func intPtr(v int) *int { return &v }
+
+func sequencedRegressStub(t *testing.T, texts []string) *httptest.Server {
+	t.Helper()
+	callCount := 0
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		idx := callCount
+		if idx >= len(texts) {
+			idx = len(texts) - 1
+		}
+		callCount++
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": texts[idx]}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+}
+
 func TestRunMatrixFlagsNewRegressionWhenPriorRunPassed(t *testing.T) {
 	srv := stubServerAlwaysFails(t)
 	defer srv.Close()
@@ -93,6 +113,81 @@ func TestRunMatrixNoRegressionWhenNoPriorHistory(t *testing.T) {
 	}
 	if len(report.GeneratedCases) != 1 {
 		t.Errorf("GeneratedCases = %v, want 1 (uncovered failing case)", report.GeneratedCases)
+	}
+}
+
+// TestRunMatrixFlakeRetriesConfirmedFailStillProposesGeneratedCase is the
+// end-to-end reachability test this task exists for: it traces a real
+// flake_retries case, with no prior history, all the way through
+// RunMatrix to prove a majority-confirmed failure still proposes a
+// generated eval case exactly like today's uncovered single-shot
+// failures do — not just that runner.RunCase's own verdict is correct in
+// isolation (Task 2 already proved that).
+func TestRunMatrixFlakeRetriesConfirmedFailStillProposesGeneratedCase(t *testing.T) {
+	srv := sequencedRegressStub(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+	})
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "flake-case",
+			Prompt: "review this",
+			Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 1 || report.Outcomes[0].Result.Passed {
+		t.Fatalf("Outcomes = %+v, want one failed (confirmed_fail) outcome", report.Outcomes)
+	}
+	if len(report.GeneratedCases) != 1 {
+		t.Errorf("GeneratedCases = %v, want 1 — a majority-confirmed failure must still propose a generated case, same as any other uncovered failure", report.GeneratedCases)
+	}
+}
+
+// TestRunMatrixFlakeRetriesConfirmedPassDoesNotProposeGeneratedCase proves
+// the other direction: a case that only failed its very first attempt but
+// resolved to a majority pass across retries must NOT be treated as a
+// regression or an uncovered failure — the raw first-attempt noise must
+// never reach the self-growing loop.
+func TestRunMatrixFlakeRetriesConfirmedPassDoesNotProposeGeneratedCase(t *testing.T) {
+	srv := sequencedRegressStub(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: true",
+	})
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "flake-case",
+			Prompt: "review this",
+			Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 1 || !report.Outcomes[0].Result.Passed {
+		t.Fatalf("Outcomes = %+v, want one passed (confirmed_pass) outcome", report.Outcomes)
+	}
+	if len(report.GeneratedCases) != 0 {
+		t.Errorf("GeneratedCases = %v, want none — a majority-confirmed pass must not be treated as an uncovered failure", report.GeneratedCases)
+	}
+	if report.ShouldFailCI(cfg.FailOn) {
+		t.Error("ShouldFailCI() = true, want false — nothing actually failed")
 	}
 }
 
