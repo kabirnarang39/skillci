@@ -8,12 +8,15 @@ package lint
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 var pipeToShellRe = regexp.MustCompile(`(?i)\b(curl|wget)\b[^\n|]*\|\s*(sudo\s+)?(sh|bash|zsh)\b`)
+
+var driveLetterRe = regexp.MustCompile(`^[A-Za-z]:\\`)
 
 var promptInjectionPhrases = []string{
 	"ignore previous instructions",
@@ -112,6 +115,60 @@ func pathTraversalIssue(skillPath, dir, refPath string, line int) *Issue {
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return &Issue{File: skillPath, Line: line, Rule: "ast03-path-traversal", Msg: fmt.Sprintf("referenced path %q escapes the skill directory", refPath)}
+	}
+	return nil
+}
+
+// ast10PathIssues checks refPath (as extracted from SKILL.md) for
+// cross-platform portability problems: backslash separators and absolute
+// paths.
+func ast10PathIssues(skillPath, refPath string, line int) []Issue {
+	var issues []Issue
+	if strings.Contains(refPath, `\`) {
+		issues = append(issues, Issue{File: skillPath, Line: line, Rule: "ast10-backslash-path-separator", Msg: fmt.Sprintf("referenced path %q uses a backslash separator, breaks on POSIX runners", refPath)})
+	}
+	if strings.HasPrefix(refPath, "/") || driveLetterRe.MatchString(refPath) {
+		issues = append(issues, Issue{File: skillPath, Line: line, Rule: "ast10-absolute-path-reference", Msg: fmt.Sprintf("referenced path %q is absolute, breaks portability across machines", refPath)})
+	}
+	return issues
+}
+
+// caseMismatchIssue reports an ast10-case-mismatch issue if refPath
+// (relative to dir) doesn't exist under its exact case, but a
+// case-insensitive match does. Returns nil if the exact path exists, or
+// if no case-insensitive match exists either (missing-referenced-file
+// already covers a fully-missing file).
+func caseMismatchIssue(skillPath, dir, refPath string, line int) *Issue {
+	// Check if path exists with exact case by walking the directory tree.
+	// We can't use os.Stat alone because on case-insensitive filesystems
+	// it succeeds even when the case doesn't match. So we walk manually
+	// to check for exact-case matches, then case-insensitive matches.
+	parts := strings.Split(filepath.ToSlash(refPath), "/")
+	current := dir
+	for _, part := range parts {
+		entries, err := os.ReadDir(current)
+		if err != nil {
+			return nil
+		}
+		exact := false
+		foundName := ""
+		for _, e := range entries {
+			if e.Name() == part {
+				exact = true
+				break
+			}
+			if strings.EqualFold(e.Name(), part) {
+				foundName = e.Name()
+			}
+		}
+		if exact {
+			current = filepath.Join(current, part)
+			continue
+		}
+		if foundName != "" {
+			return &Issue{File: skillPath, Line: line, Rule: "ast10-case-mismatch", Msg: fmt.Sprintf("referenced path %q differs in case from the file on disk (%q)", refPath, foundName)}
+		}
+		return nil
 	}
 	return nil
 }
