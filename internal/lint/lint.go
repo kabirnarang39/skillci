@@ -24,7 +24,12 @@ type frontmatter struct {
 	Description string `yaml:"description"`
 }
 
-var referencedFileRe = regexp.MustCompile(`\b(references|scripts|assets)/[A-Za-z0-9_\-./]+`)
+// referencedFileRe matches references|scripts|assets paths in the body,
+// including Windows-style backslash separators (both as the first
+// separator and within the rest of the path) — otherwise a backslash-style
+// reference is never extracted at all, and ast10-backslash-path-separator
+// (which inspects the extracted match) can never fire.
+var referencedFileRe = regexp.MustCompile(`\b(references|scripts|assets)[/\\][A-Za-z0-9_\-./\\]+`)
 
 // LintSkill checks a skill folder for the MVP rule set: valid frontmatter,
 // required name/description, description length budget, referenced files
@@ -60,15 +65,24 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	for _, match := range referencedFileRe.FindAllString(body, -1) {
 		refPath := filepath.Join(dir, match)
+		matchIdx := strings.Index(body, match)
+		lineNum := strings.Count(body[:matchIdx], "\n") + 1
 		if _, err := os.Stat(refPath); os.IsNotExist(err) {
-			// Compute line number where the reference appears in body.
-			matchIdx := strings.Index(body, match)
-			lineNum := strings.Count(body[:matchIdx], "\n") + 1
 			issues = append(issues, Issue{File: skillPath, Line: lineNum, Rule: "missing-referenced-file", Msg: fmt.Sprintf("referenced file %s does not exist", match)})
 		}
+		if iss := pathTraversalIssue(skillPath, dir, match, lineNum); iss != nil {
+			issues = append(issues, *iss)
+		}
+		issues = append(issues, ast10PathIssues(skillPath, match, lineNum)...)
+		if iss := caseMismatchIssue(skillPath, dir, match, lineNum); iss != nil {
+			issues = append(issues, *iss)
+		}
+		issues = append(issues, scanReferencedFileContent(dir, match)...)
 	}
 
 	issues = append(issues, scanForSecrets(skillPath, body)...)
+	issues = append(issues, scanTextForAST01(skillPath, body)...)
+	issues = append(issues, scanTextForAST03(skillPath, body)...)
 
 	return issues, nil
 }
