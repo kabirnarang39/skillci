@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,11 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.FailOn == "" {
 		cfg.FailOn = Default().FailOn
+	}
+	for model, price := range cfg.Pricing {
+		if price.InputPerMillion <= 0 || price.OutputPerMillion <= 0 {
+			return Config{}, fmt.Errorf("pricing entry for %q is incomplete: input_per_million and output_per_million must both be > 0 (got %v/%v)", model, price.InputPerMillion, price.OutputPerMillion)
+		}
 	}
 	return cfg, nil
 }
