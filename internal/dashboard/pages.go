@@ -336,10 +336,13 @@ var skillPageTmpl = template.Must(template.New("skill").Funcs(pageFuncs).Parse(`
     <p class="sub"><a href="/">{{.Owner}}/{{.Repo}}</a></p>
   </div>
 
+  {{range .ModelTrends}}
   <div class="card" style="margin-bottom: 20px;">
-    <div class="card-header">History Trend</div>
+    <div class="card-header">{{.Model}} — History Trend{{if .Regressed}} <span class="pill pill-fail"><span class="pill-dot"></span>regressed</span>{{end}}</div>
     <div class="sparkline-wrap">{{.SparklineSVG}}</div>
+    {{if .Regressed}}<p class="sub" style="margin-top: 8px;">This model's latest run failed after previously passing. The dashboard can't run <span class="mono">skillci bisect</span> itself — it has no access to your repo's git history — but running it locally against this skill and model will find the culprit commit.</p>{{end}}
   </div>
+  {{end}}
 
   <div class="card">
     <div class="card-header">Run History</div>
@@ -428,9 +431,60 @@ type dimensionGroup struct {
 
 type skillPageData struct {
 	Owner, Repo, Skill string
-	SparklineSVG       template.HTML
+	ModelTrends        []modelTrend
 	Rows               []IngestedResult
 	DimensionGroups    []dimensionGroup
+}
+
+// modelTrend is one model's own pass/fail history rendered as its own
+// sparkline. Previously a single sparkline interleaved every model's
+// results on one timeline — misleading whenever a skill is tested against
+// more than one model, since adjacent points could belong to entirely
+// different models rather than reflecting one continuous trend.
+type modelTrend struct {
+	Model        string
+	SparklineSVG template.HTML
+	// Regressed is true when this model's most recent result failed but
+	// the one before it passed — the same "used to pass, now doesn't"
+	// definition regress.go's own IsNewRegression uses, surfaced here
+	// since the dashboard has no git access to run bisect itself and can
+	// only ever show what upload already sent it.
+	Regressed bool
+}
+
+// modelTrends groups rows (as SkillHistory returns them: newest-to-oldest,
+// mixing every model together) into one chronological (oldest-to-newest)
+// trend per model, sorted by model name for deterministic output.
+func modelTrends(rows []IngestedResult) []modelTrend {
+	byModel := make(map[string][]IngestedResult)
+	for _, r := range rows {
+		byModel[r.Model] = append(byModel[r.Model], r)
+	}
+
+	var models []string
+	for m := range byModel {
+		models = append(models, m)
+	}
+	sort.Strings(models)
+
+	trends := make([]modelTrend, 0, len(models))
+	for _, m := range models {
+		// byModel[m] inherits SkillHistory's newest-to-oldest order;
+		// reverse to oldest-to-newest, same as the handler already did
+		// for the old single combined sparkline.
+		chron := make([]IngestedResult, len(byModel[m]))
+		copy(chron, byModel[m])
+		for i, j := 0, len(chron)-1; i < j; i, j = i+1, j-1 {
+			chron[i], chron[j] = chron[j], chron[i]
+		}
+		regressed := len(chron) >= 2 && !chron[len(chron)-1].Passed && chron[len(chron)-2].Passed
+		trends = append(trends, modelTrend{
+			Model:        m,
+			SparklineSVG: template.HTML(RenderSparkline(chron)),
+			Regressed:    regressed,
+		})
+	}
+	return trends
 }
 
 func skillPageHandler(store *Store) http.HandlerFunc {
@@ -471,17 +525,9 @@ func skillPageHandler(store *Store) http.HandlerFunc {
 			dimensionGroups = append(dimensionGroups, dimensionGroup{Key: k, Rows: byKey[k]})
 		}
 
-		// RenderSparkline expects oldest-to-newest; SkillHistory returns newest-to-oldest.
-		// Reverse for sparkline while keeping rows in original order for template.
-		sparklineRows := make([]IngestedResult, len(rows))
-		copy(sparklineRows, rows)
-		for i, j := 0, len(sparklineRows)-1; i < j; i, j = i+1, j-1 {
-			sparklineRows[i], sparklineRows[j] = sparklineRows[j], sparklineRows[i]
-		}
-
 		data := skillPageData{
 			Owner: owner, Repo: repo, Skill: skill,
-			SparklineSVG:    template.HTML(RenderSparkline(sparklineRows)),
+			ModelTrends:     modelTrends(rows),
 			Rows:            rows,
 			DimensionGroups: dimensionGroups,
 		}

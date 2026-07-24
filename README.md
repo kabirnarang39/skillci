@@ -501,6 +501,8 @@ on top of the exit code, not a replacement for it.
 
 `cmd/skillci-server` is a small Postgres-backed HTTP server that turns `skillci regress --upload` results into a public, per-skill compatibility history and leaderboard — the "does my skill still pass on the model shipped this week" trust signal, shareable the way a codecov badge is. Entirely opt-in; the CLI works standalone forever without it.
 
+Each skill's page renders one trend sparkline **per model** — not one line mixing every model's results together, since adjacent points on a combined timeline could belong to entirely different models and imply a trend that isn't real. A model whose latest run failed after previously passing gets a "regressed" badge; the dashboard can't run `skillci bisect` itself (it only ever receives what `--upload` sends it — no git access to your repo), so the badge just tells you it's worth running locally, rather than pretending to trigger it.
+
 ```bash
 export SKILLCI_DATABASE_URL="postgres://..."
 export SKILLCI_INGEST_TOKEN="a-shared-secret"
