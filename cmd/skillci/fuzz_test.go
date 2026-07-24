@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -44,8 +45,20 @@ func TestFuzzCmdSkipsCasesWithoutFuzzAssertion(t *testing.T) {
 
 func TestFuzzCmdRunsFuzzEnabledCases(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nhi"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			// The negation mutation that inserts "don't" before the verb flips the outcome
+			text = "SKILLCI_TRIGGERED: false"
+		}
 		resp := map[string]any{
-			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true\nhi"}},
+			"content": []map[string]string{{"type": "text", "text": text}},
 			"usage":   map[string]int{"input_tokens": 10},
 		}
 		w.Header().Set("Content-Type", "application/json")
