@@ -31,8 +31,18 @@ Requires Go 1.25+. An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not fo
 skillci init path/to/your-skill
 
 # Lint SKILL.md — no API calls, catches malformed frontmatter, missing
-# references, description-length issues, committed secrets
+# references, description-length issues, committed secrets, and a
+# first-layer static security scan (OWASP Agentic Skills Top 10:
+# malicious payloads, over-privileged access, insecure metadata parsing,
+# cross-platform format issues)
 skillci check path/to/your-skill
+
+`skillci check`'s security rules are mapped directly to
+[OWASP's Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/):
+malicious payloads, over-privileged access requests, insecure frontmatter
+parsing, and cross-platform path issues. This is a first-layer static scan,
+not a malware scanner — obfuscated or natural-language-only attacks can
+bypass pattern matching, a limitation OWASP itself documents (AST08).
 
 # Run the eval suite against one model
 skillci eval path/to/your-skill --model claude-sonnet-5
