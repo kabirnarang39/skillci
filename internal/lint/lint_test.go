@@ -356,3 +356,22 @@ func TestLintSkillMissingReferencedFileLineNumber(t *testing.T) {
 		t.Errorf("LintSkill() issues = %v, want a missing-referenced-file issue", issues)
 	}
 }
+
+func TestLintSkillFlagsAST04UnexpectedFrontmatterField(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\nallow_network: true\n", "Body.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast04-unexpected-frontmatter-field" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast04-unexpected-frontmatter-field issue", issues)
+	}
+}

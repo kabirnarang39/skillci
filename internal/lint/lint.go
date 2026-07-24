@@ -63,6 +63,8 @@ func LintSkill(dir string) ([]Issue, error) {
 		issues = append(issues, Issue{File: skillPath, Line: 2, Rule: "description-too-long", Msg: fmt.Sprintf("description is %d chars, over the 1024 trigger-matching budget", len(meta.Description))})
 	}
 
+	issues = append(issues, scanFrontmatterSecurity(skillPath, fm)...)
+
 	for _, rawMatch := range referencedFileRe.FindAllString(body, -1) {
 		match := strings.TrimRight(rawMatch, `\`)
 		refPath := filepath.Join(dir, match)
