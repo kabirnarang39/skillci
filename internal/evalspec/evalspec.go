@@ -30,6 +30,24 @@ type Assertions struct {
 	// FuzzStrict makes a flipped mutation a hard case failure, same as any
 	// other assertion. Meaningless if Fuzz is not true.
 	FuzzStrict *bool `yaml:"fuzz_strict"`
+	// MaxOutputTokens caps the response length. A violation is always a
+	// hard case failure, same as MaxTokensLoaded.
+	MaxOutputTokens *int `yaml:"max_output_tokens"`
+	// MaxLatencyMs caps the wall-clock time of the model call. Unlike
+	// MaxOutputTokens/MaxCostUSD, a violation is informational only
+	// unless LatencyStrict is also true — latency reflects network/
+	// inference variance, not skill behavior, so it gets the same
+	// non-strict-by-default treatment as Snapshot/Fuzz.
+	MaxLatencyMs *int64 `yaml:"max_latency_ms"`
+	// LatencyStrict makes an exceeded latency cap a hard case failure,
+	// same as any other assertion. Meaningless if MaxLatencyMs is not set.
+	LatencyStrict *bool `yaml:"latency_strict"`
+	// MaxCostUSD caps the estimated dollar cost of the call, computed from
+	// token counts and the model's pricing entry in .skillci.yaml. A
+	// violation is always a hard case failure. A case using this
+	// assertion for a model with no pricing entry configured fails with a
+	// clear "no pricing configured" message, never silently skipped.
+	MaxCostUSD *float64 `yaml:"max_cost_usd"`
 }
 
 type Case struct {
