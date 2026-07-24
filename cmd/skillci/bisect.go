@@ -158,14 +158,14 @@ func newBisectCmd() *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "bad:  %s (%s) — fails\n", shortSHA(badInfo.SHA), badInfo.Date)
 
 			var culprit string
+			var additionalCulprits []string
 			if len(changed) == 1 {
 				culprit = changed[0]
 			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "%d candidate commits, up to %d more API calls\n", len(changed), int(math.Ceil(math.Log2(float64(len(changed)+1)))))
-				fmt.Fprintln(cmd.OutOrStdout(), "bisecting...")
 				// changed is the range (good, bad] from gitutil.LogPaths, so
 				// its last element is always badSHA — already verified above.
-				// Memoize so bisect.Search never re-tests a known endpoint.
+				// Memoize so neither search algorithm below ever re-tests a
+				// known endpoint.
 				verified := map[string]bool{goodSHA: true, badSHA: false}
 				cachedTest := func(sha string) (bool, error) {
 					if v, ok := verified[sha]; ok {
@@ -178,9 +178,32 @@ func newBisectCmd() *cobra.Command {
 					verified[sha] = passed
 					return passed, nil
 				}
-				culprit, err = bisect.Search(changed, cachedTest)
+
+				hasMerges, err := gitutil.HasMergeCommits(absPath, goodSHA, badSHA, []string{"."})
 				if err != nil {
 					return err
+				}
+				if hasMerges {
+					// Binary search assumes a strictly monotonic pass/fail
+					// transition across a linear history — a merge commit
+					// can violate that by interleaving commits from
+					// different branches. Fall back to a full linear scan,
+					// which makes no ordering assumption and can detect
+					// more than one transition if the history genuinely
+					// has disjoint culprits.
+					fmt.Fprintf(cmd.OutOrStdout(), "%d candidate commits — merge commit(s) detected in this range, scanning all of them linearly for correctness\n", len(changed))
+					fmt.Fprintln(cmd.OutOrStdout(), "bisecting...")
+					culprit, additionalCulprits, err = bisect.SearchLinear(changed, cachedTest)
+					if err != nil {
+						return err
+					}
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "%d candidate commits, up to %d more API calls\n", len(changed), int(math.Ceil(math.Log2(float64(len(changed)+1)))))
+					fmt.Fprintln(cmd.OutOrStdout(), "bisecting...")
+					culprit, err = bisect.Search(changed, cachedTest)
+					if err != nil {
+						return err
+					}
 				}
 			}
 
@@ -193,6 +216,14 @@ func newBisectCmd() *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "author:  %s\n", culpritInfo.Author)
 			fmt.Fprintf(cmd.OutOrStdout(), "date:    %s\n", culpritInfo.Date)
 			fmt.Fprintf(cmd.OutOrStdout(), "message: %s\n\n", culpritInfo.Message)
+
+			if len(additionalCulprits) > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "warning: history in this range is non-linear — %d additional commit(s) also transition from passing to failing, so this regression may not have a single culprit:\n", len(additionalCulprits))
+				for _, sha := range additionalCulprits {
+					fmt.Fprintf(cmd.OutOrStdout(), "  %s\n", shortSHA(sha))
+				}
+				fmt.Fprintln(cmd.OutOrStdout())
+			}
 
 			diff, err := gitutil.DiffFiles(absPath, culprit+"^", culprit, []string{"."})
 			if err != nil {

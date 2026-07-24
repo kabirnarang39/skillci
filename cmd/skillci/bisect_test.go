@@ -357,3 +357,98 @@ func TestBisectCmdErrorsWhenNoCommitsInRange(t *testing.T) {
 		t.Fatal("Execute() error = nil, want an error (no commits touched the skill directory in range)")
 	}
 }
+
+// setupBisectRepoWithMerge builds a history where the real regression is
+// introduced on a feature branch, an UNRELATED commit lands on main in the
+// meantime, and the two are merged — producing a genuinely non-monotonic
+// pass/fail sequence in `git log --reverse` order (fail, pass, fail) that
+// Search's binary-search assumption cannot represent correctly, but which
+// SearchLinear (bisect.go's merge-detection fallback) can.
+func setupBisectRepoWithMerge(t *testing.T) (dir, good, bad, culprit string) {
+	t.Helper()
+	dir = t.TempDir()
+	runGitB(t, dir, "init", "-q")
+	runGitB(t, dir, "config", "user.email", "test@example.com")
+	runGitB(t, dir, "config", "user.name", "Test")
+
+	writeSkill := func(desc string) {
+		content := fmt.Sprintf("---\nname: haiku-writer\ndescription: %s\n---\nBody.\n", desc)
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commit := func(msg string) string {
+		runGitB(t, dir, "add", ".")
+		runGitB(t, dir, "commit", "-q", "-m", msg)
+		sha, err := gitutil.RevParseHEAD(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sha
+	}
+
+	writeSkill("Writes haikus on request.")
+	good = commit("c0: initial")
+
+	out, err := exec.Command("git", "-C", dir, "branch", "--show-current").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseBranchName := strings.TrimSpace(string(out))
+
+	runGitB(t, dir, "checkout", "-q", "-b", "feature")
+	writeSkill("Writes haikus on request, formally, BROKEN.")
+	culprit = commit("c1: feature — introduces the real regression")
+
+	runGitB(t, dir, "checkout", "-q", baseBranchName)
+	if err := os.WriteFile(filepath.Join(dir, "unrelated.txt"), []byte("unrelated change"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	commit("c2: unrelated change on main, SKILL.md untouched")
+
+	runGitB(t, dir, "merge", "-q", "--no-ff", "feature", "-m", "c3: merge feature into main")
+	bad, err = gitutil.RevParseHEAD(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	evalsDir := filepath.Join(dir, "evals")
+	if err := os.MkdirAll(evalsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	caseContent := "name: haiku-case\nprompt: write a haiku\nassert:\n  triggered: true\n"
+	if err := os.WriteFile(filepath.Join(evalsDir, "case.yaml"), []byte(caseContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return dir, good, bad, culprit
+}
+
+func TestBisectCmdHandlesMergeCommitHistory(t *testing.T) {
+	dir, good, bad, culprit := setupBisectRepoWithMerge(t)
+	srv := bisectStubServer(t)
+	defer srv.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newBisectCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"haiku-case", "--path", dir, "--good", good, "--bad", bad})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "merge commit(s) detected") {
+		t.Errorf("output = %q, want it to report detecting a merge commit and using the linear-scan fallback", output)
+	}
+	if !strings.Contains(output, "culprit: "+culprit) {
+		t.Errorf("output = %q, want it to name the real culprit %s (the feature-branch commit), not be confused by the merge or the unrelated main-branch commit", output, culprit)
+	}
+	if !strings.Contains(output, "non-linear") {
+		t.Errorf("output = %q, want a warning that the history is non-linear (a second pass-to-fail transition exists at the merge commit)", output)
+	}
+}
