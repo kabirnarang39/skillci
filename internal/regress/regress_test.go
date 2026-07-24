@@ -548,3 +548,113 @@ func TestShouldFailCITriggeredOnlyIgnoresNoAssertion(t *testing.T) {
 		t.Error("ShouldFailCI(triggered_only) = true, want false when Triggered assertion is nil (not applicable)")
 	}
 }
+
+func TestRunMatrixJudgeStrictFailureFailsCIAndProposesGeneratedCase(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nDo it yourself."
+		if req.Model == "claude-opus-4-8" {
+			text = "SKILLCI_JUDGE: tone = FAIL: dismissive"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "judge-case",
+			Prompt: "hi",
+			Assert: evalspec.Assertions{
+				Triggered:   truePtr(),
+				Judge:       []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+				JudgeStrict: truePtr(),
+			},
+		},
+	}
+	// FailOn is deliberately "any_fail" — the ONLY one of skillci's three
+	// fail_on policies that checks Result.Passed unconditionally.
+	// "triggered_only" only checks the Triggered mismatch (irrelevant
+	// here — Triggered:true genuinely matches the stub's response), and
+	// the default "regression" only fires when a PRIOR passing run
+	// exists to regress from (there is none here, hist is empty) — with
+	// either of those policies this test would silently prove nothing
+	// about judge_strict at all. Verified by hand against
+	// MatrixReport.ShouldFailCI's actual per-policy switch before writing
+	// this — do not swap this back to triggered_only or regression.
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "any_fail", JudgeModel: "claude-opus-4-8"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 1 || report.Outcomes[0].Result.Passed {
+		t.Fatalf("Outcomes = %+v, want one failed outcome (judge_strict failure)", report.Outcomes)
+	}
+	if !report.ShouldFailCI(cfg.FailOn) {
+		t.Error("ShouldFailCI(any_fail) = false, want true — Triggered itself passed, so only the judge_strict failure explains this")
+	}
+	if len(report.GeneratedCases) != 1 {
+		t.Errorf("GeneratedCases = %v, want 1 — a judge_strict failure is an uncovered failure like any other", report.GeneratedCases)
+	}
+}
+
+func TestRunMatrixJudgeSkippedWhenFlakeRetriesFiredMakesNoJudgeCall(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		if req.Model == "claude-opus-4-8" {
+			t.Fatalf("judge model was called (call #%d) despite flake retries having fired — judge must be skipped entirely", callCount)
+		}
+		text := "SKILLCI_TRIGGERED: false"
+		if callCount >= 2 {
+			text = "SKILLCI_TRIGGERED: true\nHi!"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "judge-flake-case",
+			Prompt: "hi",
+			Assert: evalspec.Assertions{
+				Triggered:    truePtr(),
+				FlakeRetries: intPtr(2),
+				Judge:        []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+			},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression", JudgeModel: "claude-opus-4-8"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if report.Outcomes[0].Result.FlakeVerdict != "confirmed_pass" {
+		t.Fatalf("FlakeVerdict = %q, want confirmed_pass", report.Outcomes[0].Result.FlakeVerdict)
+	}
+	if report.Outcomes[0].Result.JudgeFindings != nil {
+		t.Errorf("JudgeFindings = %v, want nil", report.Outcomes[0].Result.JudgeFindings)
+	}
+}
