@@ -87,6 +87,7 @@ func newRegressCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %q --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
 				}
 			}
+			printDimensionRollup(cmd.OutOrStdout(), report.Outcomes)
 
 			if len(report.GeneratedCases) > 0 {
 				paths, err := regress.WriteGeneratedCases(dir, report.GeneratedCases)
