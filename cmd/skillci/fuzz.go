@@ -75,6 +75,7 @@ func newFuzzCmd() *cobra.Command {
 			}
 
 			if ran == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "no fuzz-enabled eval cases found in evals/")
 				return nil
 			}
 			if failed > 0 {

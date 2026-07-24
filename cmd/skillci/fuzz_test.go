@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,8 +37,8 @@ func TestFuzzCmdSkipsCasesWithoutFuzzAssertion(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if out.Len() != 0 {
-		t.Errorf("output = %q, want empty — no cases have fuzz: true", out.String())
+	if !strings.Contains(out.String(), "no fuzz-enabled eval cases found in evals/") {
+		t.Errorf("output = %q, want it to mention no fuzz-enabled eval cases found", out.String())
 	}
 }
 
