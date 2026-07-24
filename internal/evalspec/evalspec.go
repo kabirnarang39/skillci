@@ -22,6 +22,14 @@ type Assertions struct {
 	// SnapshotStrict makes a detected snapshot diff a hard case failure,
 	// same as any other assertion. Meaningless if Snapshot is not true.
 	SnapshotStrict *bool `yaml:"snapshot_strict"`
+	// Fuzz opts a case into robustness testing: deterministic paraphrases
+	// of Prompt are generated and each is checked against Triggered. Only
+	// meaningful when Triggered is also set — there's nothing for a
+	// mutation's outcome to flip against otherwise.
+	Fuzz *bool `yaml:"fuzz"`
+	// FuzzStrict makes a flipped mutation a hard case failure, same as any
+	// other assertion. Meaningless if Fuzz is not true.
+	FuzzStrict *bool `yaml:"fuzz_strict"`
 }
 
 type Case struct {
