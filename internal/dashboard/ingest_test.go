@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -74,5 +75,35 @@ func TestIngestHandlerRejectsMalformedJSON(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
+func TestIngestHandlerStoresDimensionEntries(t *testing.T) {
+	store := requireTestStore(t)
+	mux := NewServer(store, "secret-token")
+
+	body := `{
+		"repo_owner": "kabirnarang", "repo": "skillci", "skill_name": "dim-ingest-skill",
+		"commit_sha": "abc123", "model": "claude-sonnet-5", "pass": false,
+		"dimensions": [
+			{"key": "segment", "value": "enterprise", "passed": false},
+			{"key": "language", "value": "es", "passed": true}
+		]
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/results", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body = %s", rec.Code, rec.Body.String())
+	}
+
+	rows, err := store.LatestDimensionResults(context.Background(), "kabirnarang", "skillci", "dim-ingest-skill")
+	if err != nil {
+		t.Fatalf("LatestDimensionResults() error = %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("LatestDimensionResults() = %v, want 2 rows (segment and language)", rows)
 	}
 }
