@@ -120,12 +120,14 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	issues = append(issues, scanFrontmatterSecurity(skillPath, fm)...)
 
+	var referencedMatches []string
 	for _, loc := range referencedFileRe.FindAllStringIndex(body, -1) {
 		rawMatch := body[loc[0]:loc[1]]
 		if prefix := extendWithAbsolutePrefix(body, loc[0]); prefix != "" {
 			rawMatch = prefix + rawMatch
 		}
 		match := strings.TrimRight(rawMatch, `\`)
+		referencedMatches = append(referencedMatches, match)
 		refPath := filepath.Join(dir, match)
 		matchIdx := strings.Index(body, match)
 		lineNum := strings.Count(body[:matchIdx], "\n") + 1
@@ -148,6 +150,17 @@ func LintSkill(dir string) ([]Issue, error) {
 	issues = append(issues, scanForSecrets(skillPath, body)...)
 	issues = append(issues, scanTextForAST01(skillPath, body)...)
 	issues = append(issues, scanTextForAST03(skillPath, body)...)
+
+	if iss := bloatBodyLengthIssue(skillPath, body); iss != nil {
+		issues = append(issues, *iss)
+	}
+	issues = append(issues, bloatDuplicateLineIssues(skillPath, body)...)
+	if iss := bloatReferencedFileCountIssue(skillPath, referencedMatches); iss != nil {
+		issues = append(issues, *iss)
+	}
+	if iss := bloatReferencedFileSizeIssue(skillPath, dir, referencedMatches); iss != nil {
+		issues = append(issues, *iss)
+	}
 
 	return issues, nil
 }

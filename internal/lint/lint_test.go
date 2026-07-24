@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -530,5 +531,115 @@ func TestLintSkillGenuineYAMLSyntaxErrorStillInvalidFrontmatter(t *testing.T) {
 	}
 	if len(issues) != 1 || issues[0].Rule != "invalid-frontmatter" {
 		t.Errorf("LintSkill() issues = %v, want one invalid-frontmatter issue", issues)
+	}
+}
+
+func TestLintSkillFlagsBloatBodyLength(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", strings.Repeat("a", 8001)+"\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "bloat-body-length" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want a bloat-body-length issue", issues)
+	}
+}
+
+func TestLintSkillFlagsBloatDuplicateLine(t *testing.T) {
+	dir := t.TempDir()
+	body := "This is a long enough instruction line to matter.\nA different line here.\nThis is a long enough instruction line to matter.\n"
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", body)
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "bloat-duplicate-line" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want a bloat-duplicate-line issue", issues)
+	}
+}
+
+func TestLintSkillFlagsBloatReferencedFileCount(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var body strings.Builder
+	for i := 0; i < 11; i++ {
+		name := fmt.Sprintf("scripts/file%d.py", i)
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&body, "See %s for details.\n", name)
+	}
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", body.String())
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "bloat-referenced-file-count" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want a bloat-referenced-file-count issue", issues)
+	}
+}
+
+func TestLintSkillFlagsBloatReferencedFileSize(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	big := make([]byte, 100*1024+1)
+	if err := os.WriteFile(filepath.Join(dir, "scripts", "big.txt"), big, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "See scripts/big.txt for details.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "bloat-referenced-file-size" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want a bloat-referenced-file-size issue", issues)
+	}
+}
+
+func TestLintSkillNoBloatIssuesOnSmallCleanSkill(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "A short, clean skill body.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	for _, iss := range issues {
+		if strings.HasPrefix(iss.Rule, "bloat-") {
+			t.Errorf("LintSkill() issues = %v, want no bloat-* issues for a small clean skill", issues)
+		}
 	}
 }
