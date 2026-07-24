@@ -297,6 +297,14 @@ message: tighten haiku-writer's tone guidance
 whenever it detects a new regression, so you don't need to remember the
 command yourself.
 
+Merge commits in the range are detected automatically — bisect falls back
+from binary search to a full linear scan of every candidate, which
+correctly finds the actual commit that introduced the regression instead
+of (incorrectly) landing on the merge commit itself. If the history
+genuinely has more than one commit where behavior transitions from
+passing to failing, that's reported as a warning rather than silently
+picked.
+
 For cost and latency budgets, three more assertions are available:
 
 ```yaml

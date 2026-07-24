@@ -179,3 +179,51 @@ func TestShowReturnsCommitInfo(t *testing.T) {
 		t.Error("Date is empty")
 	}
 }
+
+func TestHasMergeCommitsFalseOnLinearHistory(t *testing.T) {
+	dir := initRepo(t)
+	start := commitFile(t, dir, "a.txt", "v1", "initial")
+	end := commitFile(t, dir, "a.txt", "v2", "second")
+
+	has, err := HasMergeCommits(dir, start, end, []string{"."})
+	if err != nil {
+		t.Fatalf("HasMergeCommits() error = %v", err)
+	}
+	if has {
+		t.Error("HasMergeCommits() = true, want false for a plain linear history")
+	}
+}
+
+func TestHasMergeCommitsTrueWhenRangeContainsAMerge(t *testing.T) {
+	dir := initRepo(t)
+	start := commitFile(t, dir, "a.txt", "v1", "initial")
+
+	// Capture the actual default branch name rather than assuming "main"
+	// — git's init.defaultBranch is a user/environment config, not
+	// something this test should hardcode a guess about.
+	baseBranch, err := runGit(dir, "branch", "--show-current")
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseBranch = strings.TrimSpace(baseBranch)
+
+	runGitT(t, dir, "checkout", "-q", "-b", "feature")
+	commitFile(t, dir, "b.txt", "on-feature", "feature commit")
+
+	runGitT(t, dir, "checkout", "-q", baseBranch)
+	commitFile(t, dir, "c.txt", "on-main", "main commit")
+
+	runGitT(t, dir, "merge", "-q", "--no-ff", "feature", "-m", "merge feature into main")
+	end, err := RevParseHEAD(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	has, err := HasMergeCommits(dir, start, end, []string{"."})
+	if err != nil {
+		t.Fatalf("HasMergeCommits() error = %v", err)
+	}
+	if !has {
+		t.Error("HasMergeCommits() = false, want true — the range contains a real merge commit")
+	}
+}

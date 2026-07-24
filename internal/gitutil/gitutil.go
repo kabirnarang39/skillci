@@ -49,6 +49,23 @@ func LogPaths(dir, fromSHA, toSHA string, paths []string) ([]string, error) {
 	return strings.Split(out, "\n"), nil
 }
 
+// HasMergeCommits reports whether any commit in the range (fromSHA, toSHA]
+// touching paths has more than one parent — i.e., whether history in this
+// range is non-linear. bisect.Search's binary search assumes a strictly
+// monotonic pass/fail transition across a linear history; a merge commit
+// can violate that assumption by interleaving commits from different
+// branches, so the caller should fall back to bisect.SearchLinear when
+// this returns true.
+func HasMergeCommits(dir, fromSHA, toSHA string, paths []string) (bool, error) {
+	args := []string{"log", "--min-parents=2", "--format=%H", fromSHA + ".." + toSHA, "--"}
+	args = append(args, paths...)
+	out, err := runGit(dir, args...)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}
+
 // WorktreeAdd creates a temporary, detached git worktree at sha and returns
 // its root path plus a cleanup function that removes it. The caller must
 // always call cleanup, even on error paths taken after WorktreeAdd itself

@@ -35,3 +35,37 @@ func Search(candidates []string, test func(sha string) (passed bool, err error))
 	}
 	return culprit, nil
 }
+
+// SearchLinear scans every candidate in order (unlike Search's binary
+// search) and identifies every point where test's result transitions from
+// passed to failed. Real git history containing merge commits can violate
+// the strict monotonicity Search assumes — a topological (not strictly
+// chronological) ordering can interleave commits from different branches,
+// so more than one such transition is genuinely possible; unlike Search,
+// this makes no assumption about how many there are. The first
+// transition's commit is returned as the primary culprit — matching
+// Search's answer for the common, genuinely-monotonic case — and any
+// further transitions are returned separately so the caller can report
+// the ambiguity instead of silently picking one.
+func SearchLinear(candidates []string, test func(sha string) (passed bool, err error)) (culprit string, additional []string, err error) {
+	if len(candidates) == 0 {
+		return "", nil, fmt.Errorf("bisect: no candidates to search")
+	}
+
+	prevPassed := true // the caller's already-verified good endpoint, implicitly before candidates[0]
+	var transitions []string
+	for _, sha := range candidates {
+		passed, terr := test(sha)
+		if terr != nil {
+			return "", nil, terr
+		}
+		if prevPassed && !passed {
+			transitions = append(transitions, sha)
+		}
+		prevPassed = passed
+	}
+	if len(transitions) == 0 {
+		return "", nil, fmt.Errorf("bisect: no failing candidate found in range")
+	}
+	return transitions[0], transitions[1:], nil
+}
