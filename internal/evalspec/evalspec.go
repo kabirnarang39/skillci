@@ -55,7 +55,13 @@ type Case struct {
 	Prompt         string     `yaml:"prompt"`
 	SkillUnderTest string     `yaml:"skill_under_test"`
 	Assert         Assertions `yaml:"assert"`
-	SourceFile     string     `yaml:"-"`
+	// Dimensions is free-form metadata for slicing regression results —
+	// e.g. {"segment": "enterprise", "language": "es"} — with no meaning
+	// to skillci itself beyond matching against config.StrictDimensions
+	// and grouping in CLI/dashboard output. A case with no dimensions:
+	// block behaves exactly as before this field existed.
+	Dimensions map[string]string `yaml:"dimensions"`
+	SourceFile string            `yaml:"-"`
 }
 
 // LoadDir reads every *.yaml file directly under evalsDir (not recursively,
