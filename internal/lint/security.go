@@ -376,8 +376,8 @@ func scanFrontmatterSecurity(skillPath, fm string) []Issue {
 	}
 
 	for _, field := range topLevelKeys(&node) {
-		if field != "name" && field != "description" {
-			issues = append(issues, Issue{File: skillPath, Line: 1, Rule: "ast04-unexpected-frontmatter-field", Msg: fmt.Sprintf("frontmatter has an unexpected field %q (only name/description are part of the documented spec)", field)})
+		if field != "name" && field != "description" && field != "pinned_sources" {
+			issues = append(issues, Issue{File: skillPath, Line: 1, Rule: "ast04-unexpected-frontmatter-field", Msg: fmt.Sprintf("frontmatter has an unexpected field %q (only name/description/pinned_sources are part of the documented spec)", field)})
 		}
 	}
 
