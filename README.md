@@ -445,22 +445,44 @@ though the rest of the suite is gated more loosely.
 ## GitHub Actions
 
 ```yaml
-- uses: kabirnarang39/skillci/.github/actions/skillci@v0.1.0
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.2.0
   with:
     path: path/to/your-skill
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-Pin the action itself to a release tag (`@v0.1.0` above), not `@main` —
+Pin the action itself to a release tag (`@v0.2.0` above), not `@main` —
 `@main` floats onto whatever the action definition looks like next,
 silently changing your CI's behavior with no version control. The
-`version` input (defaults to `v0.1.0`) pins which `skillci` CLI binary
+`version` input (defaults to `v0.2.0`) pins which `skillci` CLI binary
 gets installed, separately from the action reference; override it once a
 newer tag ships, or set it to `latest` if you deliberately want to float
 (not recommended for production — every consumer's CI would silently
 pick up whatever ships next, with no build reproducibility).
 
 Gates CI on **new** regressions only — a flaky non-deterministic miss won't fail your build every time. Commits both the status badge (`passing` / `partial` / `regressed`) and `.skillci/history.json` back into the checkout on every run, including runs where a regression is caught — that history is what lets the self-growing eval loop avoid re-proposing the same generated case every run and lets `skillci bisect` auto-detect its good/bad commits, so it needs to actually reach your repo. The action only commits locally within the checkout; add a push step in your own workflow (or `git-auto-commit-action`) to land it.
+
+On a pull request, set `pr-comment: true` to get results posted directly
+on the PR instead of only in the Action's own log — the same comment gets
+updated on every subsequent push to that PR rather than piling up a new
+one each time:
+
+```yaml
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.2.0
+  with:
+    path: path/to/your-skill
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    pr-comment: true
+permissions:
+  pull-requests: write
+```
+
+Requires `pull-requests: write` on the workflow's `GITHUB_TOKEN` (the
+default token from a pull_request-triggered workflow already has this if
+the job's `permissions:` block grants it — see above). A failure posting
+the comment (missing permission, API hiccup) is reported as a warning in
+the Action's log, never as a build failure — `pr-comment` is a convenience
+on top of the exit code, not a replacement for it.
 
 ## Optional: hosted dashboard
 

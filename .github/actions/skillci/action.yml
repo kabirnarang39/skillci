@@ -8,7 +8,7 @@ inputs:
   version:
     description: "skillci version to install (a git tag, or 'latest' to float on main — not recommended for production, since it means every consumer's CI silently picks up whatever ships next with no build reproducibility)"
     required: false
-    default: "v0.1.0"
+    default: "v0.2.0"
   anthropic-api-key:
     description: "Anthropic API key"
     required: true
@@ -22,6 +22,14 @@ inputs:
   ingest-token:
     description: "SkillCI dashboard ingest token (required when upload is true)"
     required: false
+  pr-comment:
+    description: "Post regress results as a PR comment, updating the same comment on repeat runs instead of posting a new one every time. Only takes effect on pull_request-triggered runs. Requires the workflow's GITHUB_TOKEN to have pull-requests: write permission."
+    required: false
+    default: "false"
+  github-token:
+    description: "Token used to post the PR comment (only used when pr-comment is true)"
+    required: false
+    default: ${{ github.token }}
 runs:
   using: "composite"
   steps:
@@ -32,4 +40,5 @@ runs:
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
         SKILLCI_DASHBOARD_URL: ${{ inputs.dashboard-url }}
         SKILLCI_INGEST_TOKEN: ${{ inputs.ingest-token }}
-      run: ${{ github.action_path }}/entrypoint.sh "${{ inputs.path }}" "${{ inputs.upload }}"
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: ${{ github.action_path }}/entrypoint.sh "${{ inputs.path }}" "${{ inputs.upload }}" "${{ inputs.pr-comment }}"
