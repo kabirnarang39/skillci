@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/kabirnarang39/skillci/internal/evalspec"
 )
 
 type Issue struct {
@@ -68,6 +70,30 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	issues = append(issues, scanForSecrets(skillPath, body)...)
 
+	return issues, nil
+}
+
+// LintEvals checks a skill's eval cases (evals/*.yaml) for issues that
+// don't require a model call. Kept separate from LintSkill, which only
+// reads SKILL.md — eval case data lives in a different file layout and
+// loads through evalspec.LoadDir, not anything LintSkill touches.
+func LintEvals(dir string) ([]Issue, error) {
+	cases, err := evalspec.LoadDir(filepath.Join(dir, "evals"))
+	if err != nil {
+		return nil, err
+	}
+
+	var issues []Issue
+	for _, c := range cases {
+		if c.Assert.Fuzz != nil && *c.Assert.Fuzz && c.Assert.Triggered == nil {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "fuzz-without-triggered",
+				Msg:  fmt.Sprintf("case %q sets fuzz: true without a triggered assertion — fuzzing has nothing to compare mutated outcomes against", c.Name),
+			})
+		}
+	}
 	return issues, nil
 }
 

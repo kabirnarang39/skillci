@@ -22,6 +22,11 @@ func newCheckCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			evalIssues, err := lint.LintEvals(dir)
+			if err != nil {
+				return err
+			}
+			issues = append(issues, evalIssues...)
 			for _, iss := range issues {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s:%d: %s: %s\n", iss.File, iss.Line, iss.Rule, iss.Msg)
 			}

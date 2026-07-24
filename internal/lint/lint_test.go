@@ -88,6 +88,63 @@ func TestLintSkillDescriptionTooLong(t *testing.T) {
 	}
 }
 
+func TestLintEvalsFlagsFuzzWithoutTriggered(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  fuzz: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "fuzz-without-triggered" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a fuzz-without-triggered issue", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenTriggeredSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  fuzz: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "fuzz-without-triggered" {
+			t.Errorf("issues = %+v, want no fuzz-without-triggered issue when triggered is set", issues)
+		}
+	}
+}
+
+func TestLintEvalsNoEvalsDirIsNotAnError(t *testing.T) {
+	dir := t.TempDir()
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v, want nil for a skill with no evals/ dir", err)
+	}
+	if len(issues) != 0 {
+		t.Errorf("issues = %+v, want none", issues)
+	}
+}
+
 func TestLintSkillMissingReferencedFileLineNumber(t *testing.T) {
 	dir := t.TempDir()
 	// Create a skill with a reference on a specific line (line 3 in the body)
