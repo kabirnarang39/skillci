@@ -63,21 +63,25 @@ func LintSkill(dir string) ([]Issue, error) {
 		issues = append(issues, Issue{File: skillPath, Line: 2, Rule: "description-too-long", Msg: fmt.Sprintf("description is %d chars, over the 1024 trigger-matching budget", len(meta.Description))})
 	}
 
-	for _, match := range referencedFileRe.FindAllString(body, -1) {
+	for _, rawMatch := range referencedFileRe.FindAllString(body, -1) {
+		match := strings.TrimRight(rawMatch, `\`)
 		refPath := filepath.Join(dir, match)
 		matchIdx := strings.Index(body, match)
 		lineNum := strings.Count(body[:matchIdx], "\n") + 1
 		if _, err := os.Stat(refPath); os.IsNotExist(err) {
 			issues = append(issues, Issue{File: skillPath, Line: lineNum, Rule: "missing-referenced-file", Msg: fmt.Sprintf("referenced file %s does not exist", match)})
 		}
-		if iss := pathTraversalIssue(skillPath, dir, match, lineNum); iss != nil {
-			issues = append(issues, *iss)
+		traversalIssue := pathTraversalIssue(skillPath, dir, match, lineNum)
+		if traversalIssue != nil {
+			issues = append(issues, *traversalIssue)
 		}
 		issues = append(issues, ast10PathIssues(skillPath, match, lineNum)...)
 		if iss := caseMismatchIssue(skillPath, dir, match, lineNum); iss != nil {
 			issues = append(issues, *iss)
 		}
-		issues = append(issues, scanReferencedFileContent(dir, match)...)
+		if traversalIssue == nil {
+			issues = append(issues, scanReferencedFileContent(dir, match)...)
+		}
 	}
 
 	issues = append(issues, scanForSecrets(skillPath, body)...)
