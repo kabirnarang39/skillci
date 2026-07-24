@@ -1,14 +1,17 @@
 // Package lint's security.go implements the OWASP Agentic Skills Top 10
-// static checks: AST01 (malicious payloads), AST03 (over-privileged
-// access), AST04 (insecure metadata parsing), AST05 (untrusted external
-// instructions), AST10 (cross-platform format issues). This is a
-// first-layer static scan, not a malware scanner — obfuscated or
-// natural-language-only attacks (OWASP AST08) can bypass pattern matching
-// by design. AST02 (supply chain), AST06 (weak isolation), AST07 (update
-// drift), and AST09 (no governance) all require infrastructure a static
-// SKILL.md linter doesn't have (a registry/signing pipeline, a runtime
-// sandbox, cross-run version tracking, an org-level inventory) and are
-// out of scope by design, not by omission.
+// static checks: AST01 (malicious payloads), AST02 (supply chain —
+// floating/unpinned dependency tags only; OWASP's other AST02 mitigations
+// need a registry), AST03 (over-privileged access), AST04 (insecure
+// metadata parsing), AST05 (untrusted external instructions), AST10
+// (cross-platform format issues). This is a first-layer static scan, not
+// a malware scanner — obfuscated or natural-language-only attacks (OWASP
+// AST08) can bypass pattern matching by design. AST06 (weak isolation),
+// AST07 (update drift), and AST09 (no governance) remain fully out of
+// scope: checked against OWASP's own published mitigation lists for each,
+// every mitigation is a property of the runtime/registry/org
+// infrastructure (container sandboxing, signature verification on
+// registry updates, SOC/CMDB inventory) — none is a property of a single
+// SKILL.md file's text, so there's no honest static check to add.
 package lint
 
 import (
@@ -172,6 +175,39 @@ func scanTextForAST05(file, content string) []Issue {
 			if strings.Contains(lower, phrase) {
 				issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast05-untrusted-external-instructions", Msg: fmt.Sprintf("line fetches instructions/config from an external URL and directs the agent to treat it as authoritative: %q", phrase)})
 			}
+		}
+	}
+	return issues
+}
+
+// installVerbRe and floatingTagRe together back scanTextForAST02: OWASP's
+// AST02 mitigation #3 is "pin all dependencies to immutable hashes, not
+// version ranges" — the most common textual violation of that is an
+// explicit floating tag (`@latest`, `:latest`) on an install/pull command.
+// Requiring both an install-like verb AND a literal "latest" tag
+// character (@ or :) on the same line keeps this narrow: prose that
+// merely mentions "the latest release" has neither the punctuation nor
+// (usually) the verb adjacent to it.
+var installVerbRe = regexp.MustCompile(`(?i)\b(install|add|pull|run)\b`)
+var floatingTagRe = regexp.MustCompile(`(?i)[@:]latest\b`)
+
+// dockerFromLatestRe matches a Dockerfile FROM directive pinned to the
+// floating "latest" tag — checked separately from installVerbRe/
+// floatingTagRe because FROM must anchor at the start of the line (a
+// generic "from" verb check would false-positive on ordinary prose like
+// "download the file from the latest release").
+var dockerFromLatestRe = regexp.MustCompile(`(?im)^\s*FROM\s+\S+:latest\b`)
+
+// scanTextForAST02 scans arbitrary text content for unpinned-dependency
+// patterns (AST02): an install/pull command, or a Dockerfile FROM
+// directive, pinned to a floating "latest" tag instead of an immutable
+// version or hash.
+func scanTextForAST02(file, content string) []Issue {
+	var issues []Issue
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if dockerFromLatestRe.MatchString(line) || (installVerbRe.MatchString(line) && floatingTagRe.MatchString(line)) {
+			issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast02-unpinned-dependency", Msg: "line installs/pulls a dependency pinned to a floating \"latest\" tag instead of an immutable version or hash"})
 		}
 	}
 	return issues
@@ -478,6 +514,7 @@ func scanReferencedFileContent(dir, refPath string) []Issue {
 	content := string(data)
 	var issues []Issue
 	issues = append(issues, scanTextForAST01(full, content)...)
+	issues = append(issues, scanTextForAST02(full, content)...)
 	issues = append(issues, scanTextForAST03(full, content)...)
 	issues = append(issues, scanTextForAST05(full, content)...)
 	return issues
