@@ -58,16 +58,18 @@ func newFuzzCmd() *cobra.Command {
 				for _, f := range result.Failures {
 					fmt.Fprintf(cmd.OutOrStdout(), "    %s\n", f)
 				}
-				flipped := 0
-				for _, f := range result.FuzzFindings {
-					if f.Flipped {
-						flipped++
+				if len(result.FuzzFindings) > 0 {
+					flipped := 0
+					for _, f := range result.FuzzFindings {
+						if f.Flipped {
+							flipped++
+						}
 					}
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "  [FUZZ] %d/%d mutations flipped trigger behavior\n", flipped, len(result.FuzzFindings))
-				for _, f := range result.FuzzFindings {
-					if f.Flipped {
-						fmt.Fprintf(cmd.OutOrStdout(), "    %s: %q -> triggered=%v (want %v)\n", f.Mutation.Operator, f.Mutation.Prompt, f.Triggered, !f.Triggered)
+					fmt.Fprintf(cmd.OutOrStdout(), "  [FUZZ] %d/%d mutations flipped trigger behavior\n", flipped, len(result.FuzzFindings))
+					for _, f := range result.FuzzFindings {
+						if f.Flipped {
+							fmt.Fprintf(cmd.OutOrStdout(), "    %s: %q -> triggered=%v (want %v)\n", f.Mutation.Operator, f.Mutation.Prompt, f.Triggered, !f.Triggered)
+						}
 					}
 				}
 			}

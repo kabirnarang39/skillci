@@ -72,6 +72,38 @@ func TestFuzzCmdRunsFuzzEnabledCases(t *testing.T) {
 	}
 }
 
+func TestFuzzCmdSkipsAssertionsWhenCaseFails(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true\nhi"}},
+			"usage":   map[string]int{"input_tokens": 10},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: demo\ndescription: Demo.\n---\nBody.\n"), 0o644)
+	os.MkdirAll(filepath.Join(dir, "evals"), 0o755)
+	// Case with fuzz: true but triggered: false — case will fail, fuzzing won't run
+	os.WriteFile(filepath.Join(dir, "evals", "fuzzy_fails.yaml"), []byte("name: fuzzy_fails\nprompt: \"hi\"\nassert:\n  triggered: false\n  fuzz: true\n"), 0o644)
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newFuzzCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err == nil {
+		t.Error("Execute() error = nil, want an error when case assertion fails")
+	}
+	if bytes.Contains(out.Bytes(), []byte("[FUZZ]")) {
+		t.Errorf("output = %q, [FUZZ] should not appear when fuzzing didn't run", out.String())
+	}
+}
+
 func TestFuzzCmdRequiresAPIKey(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	cmd := newFuzzCmd()
