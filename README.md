@@ -31,10 +31,12 @@ Requires Go 1.25+. An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not fo
 skillci init path/to/your-skill
 
 # Lint SKILL.md — no API calls, catches malformed frontmatter, missing
-# references, description-length issues, committed secrets, and a
+# references, description-length issues, committed secrets, a
 # first-layer static security scan (OWASP Agentic Skills Top 10:
 # malicious payloads, over-privileged access, insecure metadata parsing,
-# cross-platform format issues)
+# cross-platform format issues), and basic "skill bloat" warnings
+# (oversized body, duplicate instructions, too many/too-large referenced
+# files)
 skillci check path/to/your-skill
 
 `skillci check`'s security rules are mapped directly to
@@ -43,6 +45,15 @@ malicious payloads, over-privileged access requests, insecure frontmatter
 parsing, and cross-platform path issues. This is a first-layer static scan,
 not a malware scanner — obfuscated or natural-language-only attacks can
 bypass pattern matching, a limitation OWASP itself documents (AST08).
+
+`skillci check` also flags basic skill bloat: an oversized `SKILL.md` body
+(over 8000 characters — every extra instruction is loaded on every
+invocation), exact-duplicate instruction lines (copy-paste bloat), and
+skills that reference too many files or too much referenced-file content
+(over 10 files or 100KB combined). These are fixed thresholds, not
+user-configurable, and — like the security rules — purely local pattern
+matching, not a judgment call about whether a skill is *good*, just
+whether it's carrying more than it needs to.
 
 # Run the eval suite against one model
 skillci eval path/to/your-skill --model claude-sonnet-5
