@@ -183,15 +183,17 @@ func newBisectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			diff, err := gitutil.DiffFiles(absPath, culprit+"^", culprit, []string{"."})
-			if err != nil {
-				return err
-			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "\nculprit: %s\n", culpritInfo.SHA)
 			fmt.Fprintf(cmd.OutOrStdout(), "author:  %s\n", culpritInfo.Author)
 			fmt.Fprintf(cmd.OutOrStdout(), "date:    %s\n", culpritInfo.Date)
 			fmt.Fprintf(cmd.OutOrStdout(), "message: %s\n\n", culpritInfo.Message)
+
+			diff, err := gitutil.DiffFiles(absPath, culprit+"^", culprit, []string{"."})
+			if err != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "(could not show a diff for this commit: %v)\n", err)
+				return nil
+			}
 			fmt.Fprintln(cmd.OutOrStdout(), diff)
 			return nil
 		},

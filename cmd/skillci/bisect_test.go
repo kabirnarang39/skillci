@@ -264,6 +264,81 @@ func TestBisectCmdErrorsWhenGoodDoesNotVerify(t *testing.T) {
 	}
 }
 
+// TestBisectCmdReportsCulpritWhenDiffFails guards the fallback added for a
+// culprit that has no parent commit (gitutil.DiffFiles(culprit+"^", culprit)
+// then fails): the culprit's SHA/author/date/message must still be printed,
+// with a one-line fallback note in place of the diff, and the command must
+// still succeed.
+//
+// The only way to reach this from the real bisect flow is for LogPaths'
+// (good, bad] range to include a rootless commit — which happens if --good
+// isn't actually an ancestor of --bad (e.g. a user-supplied SHA from an
+// unrelated branch/history). LogPaths shells out to `git log good..bad`,
+// pure SHA reachability with no ancestry requirement, so a disjoint --good
+// still yields --bad's own (single-commit, rootless) history as the
+// candidate range.
+func TestBisectCmdReportsCulpritWhenDiffFails(t *testing.T) {
+	dir := t.TempDir()
+	runGitB(t, dir, "init", "-q")
+	runGitB(t, dir, "config", "user.email", "test@example.com")
+	runGitB(t, dir, "config", "user.name", "Test")
+
+	writeSkill := func(desc string) {
+		content := fmt.Sprintf("---\nname: haiku-writer\ndescription: %s\n---\nBody.\n", desc)
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	evalsDir := filepath.Join(dir, "evals")
+	if err := os.MkdirAll(evalsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	caseContent := "name: haiku-case\nprompt: write a haiku\nassert:\n  triggered: true\n"
+	if err := os.WriteFile(filepath.Join(evalsDir, "case.yaml"), []byte(caseContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// bad: the repo's one and only commit — a root commit with no parent,
+	// already broken.
+	writeSkill("Writes haikus on request, BROKEN.")
+	runGitB(t, dir, "add", ".")
+	runGitB(t, dir, "commit", "-q", "-m", "root: broken from the start")
+	badSHA, err := gitutil.RevParseHEAD(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// good: an unrelated orphan commit (disjoint history) that passes.
+	runGitB(t, dir, "checkout", "-q", "--orphan", "good-branch")
+	writeSkill("Writes haikus on request.")
+	runGitB(t, dir, "add", ".")
+	runGitB(t, dir, "commit", "-q", "-m", "unrelated good baseline")
+	goodSHA, err := gitutil.RevParseHEAD(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := bisectStubServer(t)
+	defer srv.Close()
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newBisectCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"haiku-case", "--path", dir, "--good", goodSHA, "--bad", badSHA})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "culprit: "+badSHA) {
+		t.Errorf("output = %q, want it to name culprit %s even though its diff can't be computed", out.String(), badSHA)
+	}
+	if !strings.Contains(out.String(), "could not show a diff") {
+		t.Errorf("output = %q, want a fallback note explaining the diff couldn't be shown", out.String())
+	}
+}
+
 func TestBisectCmdErrorsWhenNoCommitsInRange(t *testing.T) {
 	dir, shas := setupBisectRepo(t)
 	srv := bisectStubServer(t)
