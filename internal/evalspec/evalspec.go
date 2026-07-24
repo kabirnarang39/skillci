@@ -60,6 +60,25 @@ type Assertions struct {
 	// attempts) a hard case failure. Meaningless if FlakeRetries is not
 	// set. Without it, a tie is informational only.
 	FlakeStrict *bool `yaml:"flake_strict"`
+	// Judge lists criteria a separate judge model evaluates against the
+	// response, once every other assertion has already passed. All
+	// criteria must pass for the judge step itself to pass. Requires
+	// JudgeModel to be configured in .skillci.yaml — a case using Judge
+	// with no judge_model configured fails with a clear error, never
+	// silently skipped.
+	Judge []JudgeCriterion `yaml:"judge"`
+	// JudgeStrict makes a failing criterion a hard case failure. Without
+	// it, a judge failure is informational only — the same
+	// non-strict-by-default pattern as Snapshot/Fuzz/MaxLatencyMs/
+	// FlakeRetries.
+	JudgeStrict *bool `yaml:"judge_strict"`
+}
+
+// JudgeCriterion is one named rubric item a judge model evaluates a
+// response against.
+type JudgeCriterion struct {
+	Name      string `yaml:"name"`
+	Criterion string `yaml:"criterion"`
 }
 
 type Case struct {
