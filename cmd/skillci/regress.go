@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -180,11 +181,24 @@ func newRegressCmd() *cobra.Command {
 						continue
 					}
 					var dims []upload.DimensionEntry
-					for d, dimPassed := range passedByDimSlice {
+					// Collect dimSlices for this model
+					var dimSlices []dimSlice
+					for d := range passedByDimSlice {
 						if d.model != model {
 							continue
 						}
-						dims = append(dims, upload.DimensionEntry{Key: d.key, Value: d.value, Passed: dimPassed})
+						dimSlices = append(dimSlices, d)
+					}
+					// Sort by key, then value for deterministic upload ordering
+					sort.Slice(dimSlices, func(i, j int) bool {
+						if dimSlices[i].key != dimSlices[j].key {
+							return dimSlices[i].key < dimSlices[j].key
+						}
+						return dimSlices[i].value < dimSlices[j].value
+					})
+					// Build dims in sorted order
+					for _, d := range dimSlices {
+						dims = append(dims, upload.DimensionEntry{Key: d.key, Value: d.value, Passed: passedByDimSlice[d]})
 					}
 					err := upload.Send(context.Background(), dashboardURL, token, upload.Result{
 						RepoOwner: owner, Repo: repoName, Skill: skillName,
