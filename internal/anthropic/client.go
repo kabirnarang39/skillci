@@ -35,6 +35,11 @@ func (c *Client) WithBaseURL(url string) *Client {
 type Message struct {
 	Text        string
 	InputTokens int
+	// OutputTokens and Latency are always populated, independent of
+	// whether any eval-case assertion uses them — see Result.OutputTokens
+	// and Result.LatencyMs in internal/runner.
+	OutputTokens int
+	Latency      time.Duration
 }
 
 type sendRequest struct {
@@ -55,7 +60,8 @@ type sendResponse struct {
 		Text string `json:"text"`
 	} `json:"content"`
 	Usage struct {
-		InputTokens int `json:"input_tokens"`
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
@@ -65,6 +71,7 @@ type sendResponse struct {
 // Send issues one Messages API call and returns the concatenated text content
 // plus the input token count the API reports (used for max_tokens_loaded assertions).
 func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt string) (Message, error) {
+	start := time.Now()
 	body, err := json.Marshal(sendRequest{
 		Model:     model,
 		MaxTokens: 4096,
@@ -113,5 +120,10 @@ func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt strin
 			text += block.Text
 		}
 	}
-	return Message{Text: text, InputTokens: parsed.Usage.InputTokens}, nil
+	return Message{
+		Text:         text,
+		InputTokens:  parsed.Usage.InputTokens,
+		OutputTokens: parsed.Usage.OutputTokens,
+		Latency:      time.Since(start),
+	}, nil
 }
