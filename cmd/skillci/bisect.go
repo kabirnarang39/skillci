@@ -117,7 +117,7 @@ func newBisectCmd() *cobra.Command {
 						fmt.Fprintf(cmd.OutOrStdout(), "warning: failed to remove worktree at %s: %v\n", worktreePath, cerr)
 					}
 				}()
-				result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target, cfg.Pricing)
+				result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target, cfg.Pricing, cfg.JudgeModel)
 				if err != nil {
 					return false, err
 				}
