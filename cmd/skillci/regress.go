@@ -78,6 +78,20 @@ func newRegressCmd() *cobra.Command {
 				if o.Result.SnapshotDiff != nil {
 					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", o.Result.SnapshotDiff.Render)
 				}
+				if len(o.Result.FuzzFindings) > 0 {
+					flipped := 0
+					for _, f := range o.Result.FuzzFindings {
+						if f.Flipped {
+							flipped++
+						}
+					}
+					fmt.Fprintf(cmd.OutOrStdout(), "  [FUZZ] %d/%d mutations flipped trigger behavior\n", flipped, len(o.Result.FuzzFindings))
+					for _, f := range o.Result.FuzzFindings {
+						if f.Flipped {
+							fmt.Fprintf(cmd.OutOrStdout(), "    %s: %q -> triggered=%v (want %v)\n", f.Mutation.Operator, f.Mutation.Prompt, f.Triggered, !f.Triggered)
+						}
+					}
+				}
 			}
 
 			if len(report.GeneratedCases) > 0 {
