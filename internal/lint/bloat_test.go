@@ -148,3 +148,16 @@ func TestBloatReferencedFileSizeIssueDeduplicatesMatches(t *testing.T) {
 		t.Errorf("bloatReferencedFileSizeIssue() = %+v, want nil — the file must be sized once despite appearing twice in matches", iss)
 	}
 }
+
+func TestBloatReferencedFileSizeIssueSkipsNonRegularFiles(t *testing.T) {
+	// A referenced path that resolves to a directory (not a regular file)
+	// must not contribute to the byte total, even though os.Stat succeeds.
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Reference the subdirectory; it must not count toward the byte total.
+	if iss := bloatReferencedFileSizeIssue("f.md", dir, []string{"subdir"}); iss != nil {
+		t.Errorf("bloatReferencedFileSizeIssue() = %+v, want nil — directories must not be counted", iss)
+	}
+}

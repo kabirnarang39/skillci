@@ -100,6 +100,9 @@ func bloatReferencedFileSizeIssue(skillPath, dir string, matches []string) *Issu
 		if err != nil {
 			continue
 		}
+		if !info.Mode().IsRegular() {
+			continue
+		}
 		total += info.Size()
 	}
 	if total <= maxReferencedFileTotalBytes {
