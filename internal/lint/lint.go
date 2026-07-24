@@ -29,7 +29,48 @@ type frontmatter struct {
 // separator and within the rest of the path) — otherwise a backslash-style
 // reference is never extracted at all, and ast10-backslash-path-separator
 // (which inspects the extracted match) can never fire.
+//
+// The keyword is word-boundary-anchored, so this alone can never capture
+// an absolute-path prefix that comes before the keyword (e.g. the
+// "/home/user/" in "/home/user/scripts/helper.py") — extendWithAbsolutePrefix
+// below prepends that prefix onto the match when present, so
+// ast10-absolute-path-reference (which inspects the extracted match) can
+// fire on real absolute references instead of just their tail.
 var referencedFileRe = regexp.MustCompile(`\b(references|scripts|assets)[/\\][A-Za-z0-9_\-./\\]+`)
+
+// isAbsPathPrefixByte reports whether b can appear in the path portion of
+// an absolute-path prefix (unix or windows), for the backward scan in
+// extendWithAbsolutePrefix.
+func isAbsPathPrefixByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		return true
+	case b == '/' || b == '\\' || b == ':' || b == '.' || b == '-' || b == '_':
+		return true
+	}
+	return false
+}
+
+// extendWithAbsolutePrefix scans body backward from matchStart (the start
+// of a referencedFileRe match) over contiguous path characters, and
+// returns that span if it looks like an absolute-path prefix (starts with
+// "/" or a drive letter like "C:\"). Returns "" otherwise, including when
+// the scan hits a directory separator that isn't itself absolute (e.g.
+// "utils/scripts/setup.sh" — "utils/" isn't an absolute prefix, so it's
+// left for the existing relative-path handling untouched) — this stops
+// the scan from swallowing an unrelated relative prefix, or text from
+// earlier in the line, into the match.
+func extendWithAbsolutePrefix(body string, matchStart int) string {
+	i := matchStart
+	for i > 0 && isAbsPathPrefixByte(body[i-1]) {
+		i--
+	}
+	prefix := body[i:matchStart]
+	if strings.HasPrefix(prefix, "/") || driveLetterRe.MatchString(prefix) {
+		return prefix
+	}
+	return ""
+}
 
 // LintSkill checks a skill folder for the MVP rule set: valid frontmatter,
 // required name/description, description length budget, referenced files
@@ -73,7 +114,11 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	issues = append(issues, scanFrontmatterSecurity(skillPath, fm)...)
 
-	for _, rawMatch := range referencedFileRe.FindAllString(body, -1) {
+	for _, loc := range referencedFileRe.FindAllStringIndex(body, -1) {
+		rawMatch := body[loc[0]:loc[1]]
+		if prefix := extendWithAbsolutePrefix(body, loc[0]); prefix != "" {
+			rawMatch = prefix + rawMatch
+		}
 		match := strings.TrimRight(rawMatch, `\`)
 		refPath := filepath.Join(dir, match)
 		matchIdx := strings.Index(body, match)
