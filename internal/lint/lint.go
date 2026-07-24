@@ -93,6 +93,14 @@ func LintEvals(dir string) ([]Issue, error) {
 				Msg:  fmt.Sprintf("case %q sets fuzz: true without a triggered assertion — fuzzing has nothing to compare mutated outcomes against", c.Name),
 			})
 		}
+		if c.Assert.FuzzStrict != nil && *c.Assert.FuzzStrict && (c.Assert.Fuzz == nil || !*c.Assert.Fuzz) {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "fuzz-strict-without-fuzz",
+				Msg:  fmt.Sprintf("case %q sets fuzz_strict: true without fuzz: true — fuzz_strict has no effect unless fuzz is also enabled", c.Name),
+			})
+		}
 	}
 	return issues, nil
 }
