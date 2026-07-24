@@ -87,7 +87,7 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 
 	for _, c := range cases {
 		for _, model := range cfg.Models {
-			result, err := runner.RunCase(ctx, client, skillDir, model, c, cfg.Pricing)
+			result, err := runner.RunCase(ctx, client, skillDir, model, c, cfg.Pricing, cfg.JudgeModel)
 			if err != nil {
 				return MatrixReport{}, history.Run{}, fmt.Errorf("case %s on %s: %w", c.Name, model, err)
 			}

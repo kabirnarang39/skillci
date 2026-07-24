@@ -73,7 +73,7 @@ const triggerMarkerPrefix = "SKILLCI_TRIGGERED:"
 // only the skill's name+description (a proxy for progressive-disclosure
 // candidate matching — see Task 7 header note), then checks the response
 // against the case's assertions.
-func RunCase(ctx context.Context, client *anthropic.Client, skillDir, model string, c evalspec.Case, pricing map[string]config.ModelPricing) (Result, error) {
+func RunCase(ctx context.Context, client *anthropic.Client, skillDir, model string, c evalspec.Case, pricing map[string]config.ModelPricing, judgeModel string) (Result, error) {
 	meta, err := readSkillMeta(skillDir)
 	if err != nil {
 		return Result{}, err

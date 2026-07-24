@@ -61,7 +61,7 @@ func TestRunCasePassing(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestRunCaseFailsOnMissingContains(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -108,7 +108,7 @@ func TestRunCaseFailsOnUnexpectedTrigger(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: falsePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -131,7 +131,7 @@ func TestRunCaseFailsOnTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -152,7 +152,7 @@ func TestRunCaseSnapshotFirstRunCapturesGolden(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -184,10 +184,10 @@ func TestRunCaseSnapshotUnchangedPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil); err != nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err != nil {
 		t.Fatalf("first RunCase() error = %v", err)
 	}
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("second RunCase() error = %v", err)
 	}
@@ -215,7 +215,7 @@ func TestRunCaseSnapshotChangedNonStrictStillPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -251,7 +251,7 @@ func TestRunCaseSnapshotChangedStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr(), SnapshotStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -279,7 +279,7 @@ func TestRunCaseSnapshotSkippedWhenOtherAssertionFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -318,7 +318,7 @@ func TestRunCaseSnapshotNotEnabledNoDiffField(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -362,7 +362,7 @@ func TestRunCaseFuzzFlippedNonStrictStillPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -413,7 +413,7 @@ func TestRunCaseFuzzFlippedStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -434,7 +434,7 @@ func TestRunCaseFuzzSkippedWhenOtherAssertionFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -458,7 +458,7 @@ func TestRunCaseFuzzNotEnabledNoFindings(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -479,7 +479,7 @@ func TestRunCaseFuzzSkippedWithoutTriggeredAssertion(t *testing.T) {
 		Assert: evalspec.Assertions{Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -525,7 +525,7 @@ func TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -594,7 +594,7 @@ func TestRunCaseFailsOnOutputTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -620,7 +620,7 @@ func TestRunCasePassesUnderOutputTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -644,7 +644,7 @@ func TestRunCaseOutputTokensAlwaysPopulated(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -670,7 +670,7 @@ func TestRunCaseLatencyNonStrictInformationalOnly(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -697,7 +697,7 @@ func TestRunCaseLatencyStrictFails(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -720,7 +720,7 @@ func TestRunCaseLatencyNotExceededWhenUnderCap(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -747,7 +747,7 @@ func TestRunCaseFailsOnCostBudget(t *testing.T) {
 	}
 
 	// 1M input tokens * $3/M + 1M output tokens * $15/M = $18, exceeds $1 cap.
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -773,7 +773,7 @@ func TestRunCasePassesUnderCostBudget(t *testing.T) {
 		"claude-sonnet-5": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -797,7 +797,7 @@ func TestRunCaseFailsHardOnMissingPricingForCostAssertion(t *testing.T) {
 	}
 
 	// pricing is nil — no entry for claude-sonnet-5 at all.
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -855,7 +855,7 @@ func TestRunCaseFlakeRetriesConfirmedPassAfterInitialFailure(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -894,7 +894,7 @@ func TestRunCaseFlakeRetriesConfirmedPassSkipsSnapshot(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2), Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -938,7 +938,7 @@ func TestRunCaseFlakeRetriesConfirmedFail(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -974,7 +974,7 @@ func TestRunCaseFlakeRetriesEarlyStopsOnDecidedMajority(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(4)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1004,7 +1004,7 @@ func TestRunCaseFlakeRetriesUnstableTieNonStrictInformationalOnly(t *testing.T) 
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1030,7 +1030,7 @@ func TestRunCaseFlakeRetriesUnstableTieStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1), FlakeStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1056,7 +1056,7 @@ func TestRunCaseFlakeRetriesNotTriggeredWhenFirstAttemptPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1088,7 +1088,7 @@ func TestRunCaseFlakeStrictAloneWithoutFlakeRetriesIsInert(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1117,7 +1117,7 @@ func TestRunCaseFlakeRetriesExplicitZeroBehavesLikeUnset(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(0)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1148,7 +1148,7 @@ func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), MaxTokensLoaded: intPtr(10), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
