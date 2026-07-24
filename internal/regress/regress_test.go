@@ -3,10 +3,12 @@ package regress
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
@@ -133,6 +135,54 @@ func TestRunMatrixSnapshotStrictFailureDoesNotProposeGeneratedCase(t *testing.T)
 	}
 	if len(report.GeneratedCases) != 0 {
 		t.Errorf("GeneratedCases = %v, want none — snapshot cases manage their own review flow", report.GeneratedCases)
+	}
+}
+
+func TestRunMatrixFuzzStrictFailureDoesNotProposeGeneratedCase(t *testing.T) {
+	// Regression test: a fuzz_strict case that flips on its very first run
+	// (no prior history) already has its own report artifact (FuzzFindings)
+	// — RunMatrix must not ALSO propose a generated eval case for the same
+	// finding. Same bug class as the snapshot double-fire fix (c2e9257).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "c1",
+			Prompt: "Can you write me a haiku?",
+			Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 1 || report.Outcomes[0].Result.Passed {
+		t.Fatalf("Outcomes = %+v, want one failed (fuzz_strict) outcome", report.Outcomes)
+	}
+	if len(report.GeneratedCases) != 0 {
+		t.Errorf("GeneratedCases = %v, want none — fuzz cases manage their own report, not the self-growing eval loop", report.GeneratedCases)
 	}
 }
 
