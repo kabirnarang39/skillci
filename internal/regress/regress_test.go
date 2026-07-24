@@ -151,6 +151,12 @@ func TestRunMatrixFlakeRetriesConfirmedFailStillProposesGeneratedCase(t *testing
 	if len(report.GeneratedCases) != 1 {
 		t.Errorf("GeneratedCases = %v, want 1 — a majority-confirmed failure must still propose a generated case, same as any other uncovered failure", report.GeneratedCases)
 	}
+	if report.Outcomes[0].Result.FlakeVerdict != "confirmed_fail" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_fail — confirms retry mechanism actually executed", report.Outcomes[0].Result.FlakeVerdict)
+	}
+	if report.Outcomes[0].Result.FlakeAttemptsTotal != 2 {
+		t.Errorf("FlakeAttemptsTotal = %d, want 2 — early-stop after majority decided (2-0 fail); confirms retry mechanism actually executed", report.Outcomes[0].Result.FlakeAttemptsTotal)
+	}
 }
 
 // TestRunMatrixFlakeRetriesConfirmedPassDoesNotProposeGeneratedCase proves
