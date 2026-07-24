@@ -7,12 +7,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/kabirnarang39/skillci/internal/gitutil"
 	"github.com/kabirnarang39/skillci/internal/history"
 	"github.com/kabirnarang39/skillci/internal/snapshot"
 	"github.com/kabirnarang39/skillci/internal/upload"
@@ -34,6 +37,142 @@ func setupSkillWithCase(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func runGitCmd(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func TestRegressCommandCommitSHAFallsBackToLocalGitHEAD(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: false"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := setupSkillWithCase(t)
+	runGitCmd(t, dir, "init", "-q")
+	runGitCmd(t, dir, "config", "user.email", "test@example.com")
+	runGitCmd(t, dir, "config", "user.name", "Test")
+	runGitCmd(t, dir, "add", ".")
+	runGitCmd(t, dir, "commit", "-q", "-m", "initial")
+	wantSHA, err := gitutil.RevParseHEAD(dir)
+	if err != nil {
+		t.Fatalf("RevParseHEAD() error = %v", err)
+	}
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+	// GITHUB_SHA intentionally unset.
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	h, err := history.Load(filepath.Join(dir, ".skillci", "history.json"))
+	if err != nil {
+		t.Fatalf("history.Load() error = %v", err)
+	}
+	lastRun, ok := h.LastRun()
+	if !ok {
+		t.Fatal("history has no runs")
+	}
+	if lastRun.CommitSHA != wantSHA {
+		t.Errorf("CommitSHA = %q, want %q (local git HEAD)", lastRun.CommitSHA, wantSHA)
+	}
+}
+
+func TestRegressCommandCommitSHAEmptyWhenNoGitAndNoEnv(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: false"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := setupSkillWithCase(t) // plain temp dir, not a git repo
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+	// GITHUB_SHA intentionally unset.
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	h, err := history.Load(filepath.Join(dir, ".skillci", "history.json"))
+	if err != nil {
+		t.Fatalf("history.Load() error = %v", err)
+	}
+	lastRun, ok := h.LastRun()
+	if !ok {
+		t.Fatal("history has no runs")
+	}
+	if lastRun.CommitSHA != "" {
+		t.Errorf("CommitSHA = %q, want empty (not a git repo, no GITHUB_SHA)", lastRun.CommitSHA)
+	}
+}
+
+func TestRegressCommandSuggestsBisectOnNewRegression(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		text := "SKILLCI_TRIGGERED: true"
+		if atomic.LoadInt32(&calls) > 0 {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		atomic.AddInt32(&calls, 1)
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := setupSkillWithCase(t) // case c1 asserts triggered: true
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	// First run: passes (triggered: true), establishes history.
+	cmd1 := newRegressCmd()
+	cmd1.SetOut(&bytes.Buffer{})
+	cmd1.SetArgs([]string{dir})
+	if err := cmd1.Execute(); err != nil {
+		t.Fatalf("first Execute() error = %v", err)
+	}
+
+	// Second run: now fails (triggered: false) — a new regression.
+	cmd2 := newRegressCmd()
+	var out bytes.Buffer
+	cmd2.SetOut(&out)
+	cmd2.SetArgs([]string{dir})
+	if err := cmd2.Execute(); err == nil {
+		t.Fatal("second Execute() error = nil, want an error (fail_on=regression default)")
+	}
+
+	if !strings.Contains(out.String(), "skillci bisect c1") {
+		t.Errorf("output = %q, want a bisect suggestion mentioning case c1", out.String())
+	}
 }
 
 func TestRegressCommandNoPriorHistoryDoesNotFailCI(t *testing.T) {
