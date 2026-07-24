@@ -69,6 +69,7 @@ func newEvalCmd() *cobra.Command {
 				if c.Assert.MaxLatencyMs != nil {
 					printLatencyWarning(cmd.OutOrStdout(), result, *c.Assert.MaxLatencyMs)
 				}
+				printFlakeReport(cmd.OutOrStdout(), result, c.Assert.FlakeStrict != nil && *c.Assert.FlakeStrict)
 			}
 
 			if failed > 0 {
