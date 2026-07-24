@@ -80,6 +80,9 @@ func newRegressCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", o.Result.SnapshotDiff.Render)
 				}
 				printFuzzFindings(cmd.OutOrStdout(), o.Result.FuzzFindings)
+				if o.Case.Assert.MaxLatencyMs != nil {
+					printLatencyWarning(cmd.OutOrStdout(), o.Result, *o.Case.Assert.MaxLatencyMs)
+				}
 				if o.IsNewRegression {
 					fmt.Fprintf(cmd.OutOrStdout(), "  run `skillci bisect %s --path %q --model %s` to find which commit broke it\n", o.Case.Name, dir, o.Model)
 				}

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEvalCommandRunsCasesAgainstStubServer(t *testing.T) {
@@ -144,5 +145,47 @@ func TestEvalCommandPrintsFuzzFlipsWhenMutationFlips(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "[FUZZ]") {
 		t.Errorf("output = %q, want it to mention [FUZZ]", out.String())
+	}
+}
+
+func TestEvalCommandPrintsLatencyWarningWhenExceeded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true\nhi"}},
+			"usage":   map[string]int{"input_tokens": 10},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	skillContent := "---\nname: demo\ndescription: Demo.\n---\nBody.\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(skillContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	evalsDir := filepath.Join(dir, "evals")
+	if err := os.MkdirAll(evalsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	caseContent := "name: latency-case\nprompt: hi\nassert:\n  triggered: true\n  max_latency_ms: 1\n"
+	if err := os.WriteFile(filepath.Join(evalsDir, "case.yaml"), []byte(caseContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	cmd := newEvalCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+
+	if !strings.Contains(out.String(), "[LATENCY]") {
+		t.Errorf("output = %q, want a [LATENCY] line (non-strict, so Execute() itself must not error)", out.String())
 	}
 }

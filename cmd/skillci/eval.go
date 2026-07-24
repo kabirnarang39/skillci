@@ -66,6 +66,9 @@ func newEvalCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", result.SnapshotDiff.Render)
 				}
 				printFuzzFindings(cmd.OutOrStdout(), result.FuzzFindings)
+				if c.Assert.MaxLatencyMs != nil {
+					printLatencyWarning(cmd.OutOrStdout(), result, *c.Assert.MaxLatencyMs)
+				}
 			}
 
 			if failed > 0 {
