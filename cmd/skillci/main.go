@@ -23,6 +23,7 @@ func main() {
 	root.AddCommand(newBadgeCmd())
 	root.AddCommand(newDiffCmd())
 	root.AddCommand(newFuzzCmd())
+	root.AddCommand(newBisectCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
