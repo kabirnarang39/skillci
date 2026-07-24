@@ -9,6 +9,7 @@ import (
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
 	"github.com/kabirnarang39/skillci/internal/bisect"
+	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/gitutil"
 	"github.com/kabirnarang39/skillci/internal/history"
@@ -34,6 +35,10 @@ func newBisectCmd() *cobra.Command {
 				client = client.WithBaseURL(base)
 			}
 
+			cfg, err := config.Load(filepath.Join(path, ".skillci.yaml"))
+			if err != nil {
+				return err
+			}
 			cases, err := evalspec.LoadDir(filepath.Join(path, "evals"))
 			if err != nil {
 				return err
@@ -112,7 +117,7 @@ func newBisectCmd() *cobra.Command {
 						fmt.Fprintf(cmd.OutOrStdout(), "warning: failed to remove worktree at %s: %v\n", worktreePath, cerr)
 					}
 				}()
-				result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target)
+				result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target, cfg.Pricing)
 				if err != nil {
 					return false, err
 				}

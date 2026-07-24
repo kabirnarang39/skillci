@@ -11,8 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kabirnarang39/skillci/internal/anthropic"
+	"github.com/kabirnarang39/skillci/internal/config"
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/snapshot"
 )
@@ -59,7 +61,7 @@ func TestRunCasePassing(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -85,7 +87,7 @@ func TestRunCaseFailsOnMissingContains(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -106,7 +108,7 @@ func TestRunCaseFailsOnUnexpectedTrigger(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: falsePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -129,7 +131,7 @@ func TestRunCaseFailsOnTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -150,7 +152,7 @@ func TestRunCaseSnapshotFirstRunCapturesGolden(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -182,10 +184,10 @@ func TestRunCaseSnapshotUnchangedPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c); err != nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil); err != nil {
 		t.Fatalf("first RunCase() error = %v", err)
 	}
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("second RunCase() error = %v", err)
 	}
@@ -213,7 +215,7 @@ func TestRunCaseSnapshotChangedNonStrictStillPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -249,7 +251,7 @@ func TestRunCaseSnapshotChangedStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr(), SnapshotStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -277,7 +279,7 @@ func TestRunCaseSnapshotSkippedWhenOtherAssertionFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -316,7 +318,7 @@ func TestRunCaseSnapshotNotEnabledNoDiffField(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -360,7 +362,7 @@ func TestRunCaseFuzzFlippedNonStrictStillPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -411,7 +413,7 @@ func TestRunCaseFuzzFlippedStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -432,7 +434,7 @@ func TestRunCaseFuzzSkippedWhenOtherAssertionFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -456,7 +458,7 @@ func TestRunCaseFuzzNotEnabledNoFindings(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -477,7 +479,7 @@ func TestRunCaseFuzzSkippedWithoutTriggeredAssertion(t *testing.T) {
 		Assert: evalspec.Assertions{Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -523,7 +525,7 @@ func TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c)
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil)
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -553,5 +555,239 @@ func TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
 	}
 	if !sawFlip {
 		t.Errorf("FuzzFindings = %+v, want at least one Flipped=true finding (the don't-insertion negation mutation)", result.FuzzFindings)
+	}
+}
+
+// stubServerWithUsage is like the existing stubServer but also sets
+// output_tokens and can simulate latency via a deliberate delay — needed
+// for the new output-tokens/latency/cost tests without changing the
+// existing stubServer helper (which every pre-existing test still uses).
+func stubServerWithUsage(t *testing.T, replyText string, inputTokens, outputTokens int, delay time.Duration) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": replyText}},
+			"usage":   map[string]int{"input_tokens": inputTokens, "output_tokens": outputTokens},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+}
+
+func int64Ptr(v int64) *int64       { return &v }
+func float64Ptr(v float64) *float64 { return &v }
+
+func TestRunCaseFailsOnOutputTokenBudget(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nSOLID verdict here.", 100, 5000, 0)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "output-budget-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{
+			Triggered:       truePtr(),
+			MaxOutputTokens: intPtr(3000),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false (5000 output tokens exceeds 3000 budget)")
+	}
+	if result.OutputTokens != 5000 {
+		t.Errorf("OutputTokens = %d, want 5000", result.OutputTokens)
+	}
+}
+
+func TestRunCasePassesUnderOutputTokenBudget(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nSOLID verdict here.", 100, 200, 0)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "output-budget-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{
+			Triggered:       truePtr(),
+			MaxOutputTokens: intPtr(3000),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+}
+
+func TestRunCaseOutputTokensAlwaysPopulated(t *testing.T) {
+	// ponytail: a zero delay lets a fast loopback round-trip finish in
+	// under 1ms, which Latency.Milliseconds() truncates to 0 — flaky, not
+	// an implementation bug. A tiny deterministic delay keeps the assertion
+	// meaningful without weakening it.
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 100, 42, 2*time.Millisecond)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "no-assertion-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{Triggered: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.OutputTokens != 42 {
+		t.Errorf("OutputTokens = %d, want 42 (always populated, no assertion needed)", result.OutputTokens)
+	}
+	if result.LatencyMs <= 0 {
+		t.Errorf("LatencyMs = %d, want > 0 (always populated)", result.LatencyMs)
+	}
+}
+
+func TestRunCaseLatencyNonStrictInformationalOnly(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 100, 10, 60*time.Millisecond)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "latency-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:    truePtr(),
+			MaxLatencyMs: int64Ptr(10),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true — non-strict latency violation must not fail the case; Failures = %v", result.Failures)
+	}
+	if !result.LatencyExceeded {
+		t.Error("LatencyExceeded = false, want true (measured latency exceeded the 10ms cap)")
+	}
+}
+
+func TestRunCaseLatencyStrictFails(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 100, 10, 60*time.Millisecond)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "latency-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:     truePtr(),
+			MaxLatencyMs:  int64Ptr(10),
+			LatencyStrict: truePtr(),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — latency_strict must fail the case on an exceeded cap")
+	}
+}
+
+func TestRunCaseFailsOnCostBudget(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 1_000_000, 1_000_000, 0)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "cost-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:  truePtr(),
+			MaxCostUSD: float64Ptr(1.0),
+		},
+	}
+	pricing := map[string]config.ModelPricing{
+		"claude-sonnet-5": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
+	}
+
+	// 1M input tokens * $3/M + 1M output tokens * $15/M = $18, exceeds $1 cap.
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false (computed cost of $18 exceeds $1 cap)")
+	}
+}
+
+func TestRunCasePassesUnderCostBudget(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 100, 100, 0)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "cost-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:  truePtr(),
+			MaxCostUSD: float64Ptr(1.0),
+		},
+	}
+	pricing := map[string]config.ModelPricing{
+		"claude-sonnet-5": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+}
+
+func TestRunCaseFailsHardOnMissingPricingForCostAssertion(t *testing.T) {
+	srv := stubServerWithUsage(t, "SKILLCI_TRIGGERED: true\nhi", 100, 100, 0)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "cost-case-no-pricing",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:  truePtr(),
+			MaxCostUSD: float64Ptr(1.0),
+		},
+	}
+
+	// pricing is nil — no entry for claude-sonnet-5 at all.
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil)
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — max_cost_usd with no pricing entry must hard-fail")
+	}
+	found := false
+	for _, f := range result.Failures {
+		if strings.Contains(f, "no pricing configured for model") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Failures = %v, want a message naming the missing pricing configuration", result.Failures)
 	}
 }
