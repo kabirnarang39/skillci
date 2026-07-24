@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in skillci doesn't work the way it should
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: skillci version
+      description: Output of `skillci --version`
+      placeholder: "skillci version 0.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: command
+    attributes:
+      label: Command
+      options:
+        - check
+        - eval
+        - regress
+        - bisect
+        - fuzz
+        - accept
+        - diff
+        - badge
+        - init
+        - other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full command output/error if you have it
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: >-
+        The smallest `SKILL.md` / eval case / `.skillci.yaml` that
+        reproduces this — a real repro is the single biggest thing that
+        speeds up a fix.
+      render: yaml
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "macOS 15 / Go 1.25.3, or: Homebrew install / linux amd64"
+    validations:
+      required: false
