@@ -107,7 +107,11 @@ func newBisectCmd() *cobra.Command {
 				if err != nil {
 					return false, err
 				}
-				defer cleanup()
+				defer func() {
+					if cerr := cleanup(); cerr != nil {
+						fmt.Fprintf(cmd.OutOrStdout(), "warning: failed to remove worktree at %s: %v\n", worktreePath, cerr)
+					}
+				}()
 				result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target)
 				if err != nil {
 					return false, err
@@ -154,7 +158,22 @@ func newBisectCmd() *cobra.Command {
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "%d candidate commits, up to %d more API calls\n", len(changed), int(math.Ceil(math.Log2(float64(len(changed)+1)))))
 				fmt.Fprintln(cmd.OutOrStdout(), "bisecting...")
-				culprit, err = bisect.Search(changed, test)
+				// changed is the range (good, bad] from gitutil.LogPaths, so
+				// its last element is always badSHA — already verified above.
+				// Memoize so bisect.Search never re-tests a known endpoint.
+				verified := map[string]bool{goodSHA: true, badSHA: false}
+				cachedTest := func(sha string) (bool, error) {
+					if v, ok := verified[sha]; ok {
+						return v, nil
+					}
+					passed, err := test(sha)
+					if err != nil {
+						return false, err
+					}
+					verified[sha] = passed
+					return passed, nil
+				}
+				culprit, err = bisect.Search(changed, cachedTest)
 				if err != nil {
 					return err
 				}
