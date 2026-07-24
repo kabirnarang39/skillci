@@ -1,0 +1,54 @@
+{
+  "name": "skillci",
+  "displayName": "SkillCI",
+  "description": "Live security and bloat lint for Claude Skill SKILL.md files, using skillci check --format json",
+  "version": "0.1.0",
+  "publisher": "kabirnarang39",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kabirnarang39/skillci"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Linters"],
+  "activationEvents": [
+    "workspaceContains:**/SKILL.md"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "SkillCI",
+      "properties": {
+        "skillci.path": {
+          "type": "string",
+          "default": "skillci",
+          "description": "Path to the skillci binary. Defaults to \"skillci\" on your PATH."
+        },
+        "skillci.lintOnType": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-lint on every edit (debounced), not just on save."
+        },
+        "skillci.lintOnTypeDelayMs": {
+          "type": "number",
+          "default": 500,
+          "description": "Debounce delay in milliseconds for lint-on-type."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "tsc -p ./ && node --test out/lintResult.test.js",
+    "package": "npm run compile && vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0"
+  }
+}
