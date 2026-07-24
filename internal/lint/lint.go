@@ -149,6 +149,7 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	issues = append(issues, scanForSecrets(skillPath, body)...)
 	issues = append(issues, scanTextForAST01(skillPath, body)...)
+	issues = append(issues, scanTextForAST02(skillPath, body)...)
 	issues = append(issues, scanTextForAST03(skillPath, body)...)
 	issues = append(issues, scanTextForAST05(skillPath, body)...)
 

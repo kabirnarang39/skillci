@@ -46,26 +46,32 @@ skillci init path/to/your-skill
 # Lint SKILL.md — no API calls, catches malformed frontmatter, missing
 # references, description-length issues, committed secrets, a
 # first-layer static security scan (OWASP Agentic Skills Top 10:
-# malicious payloads, over-privileged access, insecure metadata parsing,
-# untrusted external instructions, cross-platform format issues), and
-# basic "skill bloat" warnings (oversized body, duplicate instructions,
-# too many/too-large referenced files)
+# malicious payloads, unpinned dependencies, over-privileged access,
+# insecure metadata parsing, untrusted external instructions,
+# cross-platform format issues), and basic "skill bloat" warnings
+# (oversized body, duplicate instructions, too many/too-large referenced
+# files)
 skillci check path/to/your-skill
 ```
 
-`skillci check`'s security rules are mapped directly to 5 of
+`skillci check`'s security rules are mapped directly to 6 of
 [OWASP's Agentic Skills Top 10](https://owasp.org/www-project-agentic-skills-top-10/)
-categories — AST01 (malicious skills), AST03 (over-privileged skills), AST04
-(insecure metadata), AST05 (untrusted external instructions: a skill body
-that fetches instructions/config from a URL and directs the agent to treat
-it as authoritative), and AST10 (cross-platform reuse). This is a
-first-layer static scan, not a malware scanner — obfuscated or
-natural-language-only attacks can bypass pattern matching, a limitation
-OWASP itself documents (AST08). The other 4 categories — AST02 (supply
-chain), AST06 (weak isolation), AST07 (update drift), AST09 (no governance)
-— need infrastructure a static linter doesn't have (a registry/signing
-pipeline, a runtime sandbox, cross-run version tracking, an org-level
-inventory) and are out of scope by design, not by omission.
+categories — AST01 (malicious skills), AST02 (supply chain: an install/pull
+command or Dockerfile `FROM` pinned to a floating `latest` tag instead of an
+immutable version/hash — OWASP's own AST02 mitigation list names this
+exact practice), AST03 (over-privileged skills), AST04 (insecure metadata),
+AST05 (untrusted external instructions: a skill body that fetches
+instructions/config from a URL and directs the agent to treat it as
+authoritative), and AST10 (cross-platform reuse). This is a first-layer
+static scan, not a malware scanner — obfuscated or natural-language-only
+attacks can bypass pattern matching, a limitation OWASP itself documents
+(AST08). The other 3 categories — AST06 (weak isolation), AST07 (update
+drift), AST09 (no governance) — were checked against OWASP's own published
+mitigation lists for each: every mitigation (container sandboxing,
+signature verification on registry updates, SOC/CMDB inventory) is a
+property of the runtime, registry, or organization, never of a single
+`SKILL.md` file's text — so there's no honest static check to add for
+these three, not an omission.
 
 `skillci check` also flags basic skill bloat: an oversized `SKILL.md` body
 (over 8000 characters — every extra instruction is loaded on every
