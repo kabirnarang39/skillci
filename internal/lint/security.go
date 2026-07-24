@@ -25,7 +25,7 @@ var promptInjectionPhrases = []string{
 	"do this silently",
 }
 
-var base64BlobRe = regexp.MustCompile(`[A-Za-z0-9+/]{78,}={0,2}`)
+var base64BlobRe = regexp.MustCompile(`[A-Za-z0-9+/]{80,}={0,2}`)
 
 var dynamicExecRe = regexp.MustCompile(`\b(eval|exec)\s*\(\s*[^"'\)]`)
 
