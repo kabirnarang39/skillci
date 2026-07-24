@@ -8,6 +8,8 @@ package lint
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -55,4 +57,58 @@ func bloatDuplicateLineIssues(skillPath, body string) []Issue {
 		seen[trimmed] = true
 	}
 	return issues
+}
+
+const maxReferencedFileCount = 10
+
+// bloatReferencedFileCountIssue fires when the number of DISTINCT paths in
+// matches exceeds the fixed budget. matches may contain duplicates (the
+// same file mentioned more than once in prose) — those are deduplicated
+// before counting.
+func bloatReferencedFileCountIssue(skillPath string, matches []string) *Issue {
+	distinct := make(map[string]bool)
+	for _, m := range matches {
+		distinct[m] = true
+	}
+	if len(distinct) <= maxReferencedFileCount {
+		return nil
+	}
+	return &Issue{
+		File: skillPath,
+		Line: 1,
+		Rule: "bloat-referenced-file-count",
+		Msg:  fmt.Sprintf("skill references %d distinct files, over the %d-file budget — more files means more surface area to audit", len(distinct), maxReferencedFileCount),
+	}
+}
+
+const maxReferencedFileTotalBytes = 100 * 1024
+
+// bloatReferencedFileSizeIssue fires when the combined byte size of every
+// DISTINCT existing file in matches (relative to dir) exceeds the fixed
+// budget. A path that doesn't exist on disk contributes 0 to the total —
+// missing-referenced-file already reports it separately, and this
+// function never errors on a missing file.
+func bloatReferencedFileSizeIssue(skillPath, dir string, matches []string) *Issue {
+	distinct := make(map[string]bool)
+	var total int64
+	for _, m := range matches {
+		if distinct[m] {
+			continue
+		}
+		distinct[m] = true
+		info, err := os.Stat(filepath.Join(dir, m))
+		if err != nil {
+			continue
+		}
+		total += info.Size()
+	}
+	if total <= maxReferencedFileTotalBytes {
+		return nil
+	}
+	return &Issue{
+		File: skillPath,
+		Line: 1,
+		Rule: "bloat-referenced-file-size",
+		Msg:  fmt.Sprintf("referenced files total %d bytes, over the %d-byte budget", total, maxReferencedFileTotalBytes),
+	}
 }
