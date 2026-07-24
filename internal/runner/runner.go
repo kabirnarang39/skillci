@@ -245,6 +245,8 @@ func runJudge(ctx context.Context, client *anthropic.Client, judgeModel, respons
 SKILLCI_JUDGE: <criterion name> = PASS
 SKILLCI_JUDGE: <criterion name> = FAIL: <short reason>
 
+Use the exact criterion name verbatim — do not paraphrase or alter it.
+
 Output nothing else — no preamble, no summary, just one SKILLCI_JUDGE line per criterion, in the order given.`
 
 	var userPrompt strings.Builder
