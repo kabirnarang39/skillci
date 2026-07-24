@@ -47,7 +47,7 @@ func TestScanTextForAST01NoPromptInjectionOnBenignText(t *testing.T) {
 }
 
 func TestScanTextForAST01EmbeddedBase64Blob(t *testing.T) {
-	blob := "QWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVuIHNlc2FtZQ=="
+	blob := "QWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVuIHNlc2FtZQ=="
 	issues := scanTextForAST01("f.md", "payload: "+blob+"\n")
 	found := false
 	for _, iss := range issues {
