@@ -88,6 +88,35 @@ property of the runtime, registry, or organization, never of a single
 `SKILL.md` file's text — so there's no honest static check to add for
 these three, not an omission.
 
+One narrow, opt-in exception, since it's directly checkable without a
+registry: a skill author can declare `pinned_sources` in frontmatter — the
+exact expected SHA-256 of an external URL this skill's instructions depend
+on — and `skillci check --verify-pinned-sources` fetches it and confirms
+the content hasn't silently changed since it was pinned. This is the
+**one** flag in this entire command that makes a network call; everything
+else, including the check above, stays local-only. Off by default, and
+never runs unless you pass it by name:
+
+```yaml
+---
+name: my-skill
+description: Fetches shared guidelines from a central doc.
+pinned_sources:
+  - url: https://example.com/shared-guidelines.md
+    sha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+---
+```
+
+```bash
+skillci check --verify-pinned-sources path/to/your-skill
+```
+
+A hash mismatch means the pinned content changed since someone last
+reviewed and pinned it — implementing AST02's "pin dependencies to
+immutable hashes" mitigation, and catching AST07-style update drift, for
+the one case that's actually checkable without a registry: content the
+skill's own author already opted to pin.
+
 `skillci check` also flags basic skill bloat: an oversized `SKILL.md` body
 (over 8000 characters — every extra instruction is loaded on every
 invocation), exact-duplicate instruction lines (copy-paste bloat), and

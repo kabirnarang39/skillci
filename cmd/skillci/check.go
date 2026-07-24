@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/kabirnarang39/skillci/internal/lint"
 	"github.com/spf13/cobra"
@@ -10,6 +11,7 @@ import (
 
 func newCheckCmd() *cobra.Command {
 	var format string
+	var verifyPinnedSources bool
 	cmd := &cobra.Command{
 		Use:   "check [path]",
 		Short: "Lint a skill's SKILL.md and referenced files (no API calls)",
@@ -20,7 +22,12 @@ Skills Top 10: AST01 (malicious payloads), AST02 (unpinned dependencies),
 AST03 (over-privileged access), AST04 (insecure metadata parsing), AST05
 (untrusted external instructions), AST10 (cross-platform format issues).
 This is pattern-matching, not a malware scanner — obfuscated or
-natural-language-only attacks can bypass it (OWASP AST08).`,
+natural-language-only attacks can bypass it (OWASP AST08).
+
+By default this command makes zero network calls. --verify-pinned-sources
+is the one opt-in exception: it fetches each URL a skill's frontmatter
+declares under pinned_sources and confirms the content hash hasn't
+silently changed since it was pinned. Off unless you ask for it by name.`,
 		// A lint failure (issues found) is a normal, expected outcome for
 		// this command — not user misuse of the CLI's flags/args — so
 		// cobra's default "print the Usage block on any RunE error" would
@@ -51,6 +58,14 @@ natural-language-only attacks can bypass it (OWASP AST08).`,
 			}
 			issues = append(issues, evalIssues...)
 
+			if verifyPinnedSources {
+				pinIssues, err := lint.VerifyPinnedSources(cmd.Context(), filepath.Join(dir, "SKILL.md"))
+				if err != nil {
+					return err
+				}
+				issues = append(issues, pinIssues...)
+			}
+
 			if format == "json" {
 				// Emit [] rather than JSON `null` for a clean pass — nil
 				// slices marshal to null, which is a needless special case
@@ -78,5 +93,6 @@ natural-language-only attacks can bypass it (OWASP AST08).`,
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "output format: text or json")
+	cmd.Flags().BoolVar(&verifyPinnedSources, "verify-pinned-sources", false, "fetch each pinned_sources URL over the network and verify its content hash hasn't changed (the only network call this command ever makes; off by default)")
 	return cmd
 }

@@ -22,6 +22,23 @@ type Issue struct {
 type frontmatter struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
+	// PinnedSources is opt-in: a skill author declares the exact expected
+	// content hash of an external resource this skill's instructions
+	// depend on (e.g. a URL AST05 flagged as a fetch-instructions
+	// source), and VerifyPinnedSources fetches it and confirms the
+	// content hasn't silently changed since it was pinned — implementing
+	// OWASP AST02's "pin dependencies to immutable hashes" mitigation and
+	// AST07's "update drift" detection without needing a package
+	// registry, since skillci itself becomes the trust anchor. Empty
+	// unless a skill author explicitly opts in.
+	PinnedSources []PinnedSource `yaml:"pinned_sources"`
+}
+
+// PinnedSource is one externally-hosted resource a skill author has
+// pinned to an expected SHA-256 content hash.
+type PinnedSource struct {
+	URL    string `yaml:"url"`
+	SHA256 string `yaml:"sha256"`
 }
 
 // referencedFileRe matches references|scripts|assets paths in the body,
