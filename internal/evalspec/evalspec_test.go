@@ -131,3 +131,53 @@ func TestLoadDirParsesFuzzFields(t *testing.T) {
 		t.Error("Assert.FuzzStrict = nil or false, want true")
 	}
 }
+
+func TestLoadDirParsesCostLatencyFields(t *testing.T) {
+	dir := t.TempDir()
+	content := "name: cost-case\nprompt: hi\nassert:\n  triggered: true\n  max_output_tokens: 500\n  max_latency_ms: 3000\n  latency_strict: true\n  max_cost_usd: 0.05\n"
+	writeCase(t, dir, "case.yaml", content)
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	c := cases[0]
+	if c.Assert.MaxOutputTokens == nil || *c.Assert.MaxOutputTokens != 500 {
+		t.Errorf("MaxOutputTokens = %v, want 500", c.Assert.MaxOutputTokens)
+	}
+	if c.Assert.MaxLatencyMs == nil || *c.Assert.MaxLatencyMs != 3000 {
+		t.Errorf("MaxLatencyMs = %v, want 3000", c.Assert.MaxLatencyMs)
+	}
+	if c.Assert.LatencyStrict == nil || !*c.Assert.LatencyStrict {
+		t.Errorf("LatencyStrict = %v, want true", c.Assert.LatencyStrict)
+	}
+	if c.Assert.MaxCostUSD == nil || *c.Assert.MaxCostUSD != 0.05 {
+		t.Errorf("MaxCostUSD = %v, want 0.05", c.Assert.MaxCostUSD)
+	}
+}
+
+func TestLoadDirCostLatencyFieldsDefaultNil(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "plain.yaml", "name: plain-case\nprompt: p\nassert:\n  triggered: true\n")
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Assert.MaxOutputTokens != nil {
+		t.Errorf("MaxOutputTokens = %v, want nil when not specified", c.Assert.MaxOutputTokens)
+	}
+	if c.Assert.MaxLatencyMs != nil {
+		t.Errorf("MaxLatencyMs = %v, want nil when not specified", c.Assert.MaxLatencyMs)
+	}
+	if c.Assert.LatencyStrict != nil {
+		t.Errorf("LatencyStrict = %v, want nil when not specified", c.Assert.LatencyStrict)
+	}
+	if c.Assert.MaxCostUSD != nil {
+		t.Errorf("MaxCostUSD = %v, want nil when not specified", c.Assert.MaxCostUSD)
+	}
+}
