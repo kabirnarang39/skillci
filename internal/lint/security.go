@@ -1,9 +1,14 @@
 // Package lint's security.go implements the OWASP Agentic Skills Top 10
 // static checks: AST01 (malicious payloads), AST03 (over-privileged
-// access), AST04 (insecure metadata parsing), AST10 (cross-platform
-// format issues). This is a first-layer static scan, not a malware
-// scanner — obfuscated or natural-language-only attacks (OWASP AST08) can
-// bypass pattern matching by design.
+// access), AST04 (insecure metadata parsing), AST05 (untrusted external
+// instructions), AST10 (cross-platform format issues). This is a
+// first-layer static scan, not a malware scanner — obfuscated or
+// natural-language-only attacks (OWASP AST08) can bypass pattern matching
+// by design. AST02 (supply chain), AST06 (weak isolation), AST07 (update
+// drift), and AST09 (no governance) all require infrastructure a static
+// SKILL.md linter doesn't have (a registry/signing pipeline, a runtime
+// sandbox, cross-run version tracking, an org-level inventory) and are
+// out of scope by design, not by omission.
 package lint
 
 import (
@@ -111,6 +116,62 @@ func scanTextForAST01(file, content string) []Issue {
 		}
 		if dynamicExecRe.MatchString(line) || hasExecConcatBypass(line) {
 			issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast01-dynamic-exec-untrusted-input", Msg: "line calls eval/exec on a non-literal argument or concatenates onto a string literal argument"})
+		}
+	}
+	return issues
+}
+
+// urlRe matches any http(s) URL — used by scanTextForAST05 to require an
+// actual external address on the line, not just a phrase that happens to
+// mention "instructions", so a benign line like "follow the instructions
+// in this file" never fires.
+var urlRe = regexp.MustCompile(`https?://`)
+
+// externalInstructionPhrases are phrases describing fetching instructions,
+// prompts, rules, or configuration from an external source and treating it
+// as authoritative (AST05: Untrusted External Instructions) — the skill
+// equivalent of a supply-chain attack where the remote content, not the
+// reviewed SKILL.md body, ends up dictating agent behavior at runtime.
+var externalInstructionPhrases = []string{
+	"fetch the instructions",
+	"fetch instructions from",
+	"fetch your instructions from",
+	"download the instructions",
+	"download instructions from",
+	"retrieve the instructions",
+	"retrieve instructions from",
+	"load the instructions from",
+	"load your instructions from",
+	"follow the instructions at",
+	"follow the instructions from",
+	"fetch the latest prompt",
+	"fetch your system prompt",
+	"load your system prompt from",
+	"pull the configuration from",
+	"fetch the configuration from",
+	"download the configuration from",
+	"fetch the rules from",
+	"fetch the guidelines from",
+}
+
+// scanTextForAST05 scans arbitrary text content for untrusted-external-
+// instructions patterns (AST05): a line that both references an external
+// URL and describes fetching instructions/prompts/config from it and
+// treating that content as authoritative. Requiring both on the same line
+// keeps this narrow — a line that merely mentions a URL, or merely
+// mentions "instructions" without an external source, doesn't qualify.
+func scanTextForAST05(file, content string) []Issue {
+	var issues []Issue
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		if !urlRe.MatchString(line) {
+			continue
+		}
+		lower := strings.ToLower(line)
+		for _, phrase := range externalInstructionPhrases {
+			if strings.Contains(lower, phrase) {
+				issues = append(issues, Issue{File: file, Line: i + 1, Rule: "ast05-untrusted-external-instructions", Msg: fmt.Sprintf("line fetches instructions/config from an external URL and directs the agent to treat it as authoritative: %q", phrase)})
+			}
 		}
 	}
 	return issues
@@ -418,5 +479,6 @@ func scanReferencedFileContent(dir, refPath string) []Issue {
 	var issues []Issue
 	issues = append(issues, scanTextForAST01(full, content)...)
 	issues = append(issues, scanTextForAST03(full, content)...)
+	issues = append(issues, scanTextForAST05(full, content)...)
 	return issues
 }
