@@ -10,6 +10,19 @@
 
 A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
 
+## What's inside
+
+| | |
+|---|---|
+| **Self-growing eval loop** | An uncovered regression writes its own permanent test case instead of just failing once. |
+| **Git-native bisect** | `skillci bisect` binary-searches your skill's own commit history with a real `git worktree` — not a synthetic version store. |
+| **Deterministic fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) checks trigger-prompt robustness without random model calls. |
+| **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample. |
+| **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
+| **Optional LLM-as-judge** | `judge:` criteria scored by a separate, non-self-judging model — opt-in, informational by default. |
+| **Local-only lint** | Security scan (OWASP Agentic Skills Top 10) and skill-bloat checks, zero API calls. |
+| **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
+
 ## Why
 
 You write a Claude Skill. It works today. Six months from now, Anthropic ships a new model, and nobody tested your skill against it first — because until now, no tool did that automatically. It might stop triggering, ignore instructions it used to follow, or blow past a token budget you never knew it had. You find out by accident, not by CI.
