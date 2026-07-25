@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.1] — 2026-07-25
+
+### Added
+- `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
+- Go Report Card and pkg.go.dev badges in README.
+- GitHub social-preview image (`.github/assets/social-preview.png`).
+
+### Fixed
+- Contact email in `SECURITY.md` and a README example pointed at a
+  work address; corrected to the maintainer's personal email.
+- Removed a `star-history.com` badge that was failing server-side
+  (500/timeout) rather than rendering.
+
 ## [v0.3.0] — 2026-07-25
 
 ### Added
