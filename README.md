@@ -5,6 +5,8 @@
 [![CI](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kabirnarang39/skillci)](https://goreportcard.com/report/github.com/kabirnarang39/skillci)
+[![Go Reference](https://pkg.go.dev/badge/github.com/kabirnarang39/skillci.svg)](https://pkg.go.dev/github.com/kabirnarang39/skillci)
 
 ![SkillCI demo: skillci check, regress across a model matrix, catching an uncovered failure, generating an eval case, and accepting it](.github/assets/demo.gif)
 
@@ -657,7 +659,11 @@ SkillCI's core differentiator is the **self-growing eval loop**: when a regressi
 
 ## Status
 
-Early — the core CLI (lint/eval/regress/self-growing loop) is stable and tested; the dashboard is functional but newer. Issues and PRs welcome. See [CHANGELOG.md](CHANGELOG.md) for release notes and [SECURITY.md](SECURITY.md) to report a vulnerability.
+Early — the core CLI (lint/eval/regress/self-growing loop) is stable and tested; the dashboard is functional but newer. Issues and PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) to get started (a few [good first issues](https://github.com/kabirnarang39/skillci/labels/good%20first%20issue) are tagged) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations. See [CHANGELOG.md](CHANGELOG.md) for release notes and [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=kabirnarang39/skillci&type=Date)](https://star-history.com/#kabirnarang39/skillci&Date)
+
+If SkillCI caught a regression for you or saved you a debugging session, a star helps others find it — and tells me what to prioritize next.
 
 ## License
 
