@@ -1,0 +1,22 @@
+{
+    "version": "0.3.2",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/kabirnarang39/skillci/releases/download/v0.3.2/skillci_0.3.2_windows_amd64.zip",
+            "bin": [
+                "skillci.exe"
+            ],
+            "hash": "81f9f3af079a76301e71e9b164cbfa7c60c600e32a495f16309292ee7ccc63c0"
+        },
+        "arm64": {
+            "url": "https://github.com/kabirnarang39/skillci/releases/download/v0.3.2/skillci_0.3.2_windows_arm64.zip",
+            "bin": [
+                "skillci.exe"
+            ],
+            "hash": "e3b79b3b7955804251c427c542375192fac5abf2f1449ad9b154057ac3074082"
+        }
+    },
+    "homepage": "https://github.com/kabirnarang39/skillci",
+    "license": "Apache-2.0",
+    "description": "Lint, eval, and regression-test Claude Skills against a model matrix"
+}
