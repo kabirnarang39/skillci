@@ -34,16 +34,16 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 Every other tool in this space does one slice of what skillci does — none combine OWASP-mapped skill security scanning, cross-model regression testing, git-native culprit-commit bisection, and a self-growing eval loop in one tool. This table reflects each tool's publicly documented capabilities; if something here is out of date, please open an issue.
 
 | | **skillci** | [skillgrade](https://github.com/mgechev/skillgrade) | [AgentLinter](https://agentlinter.com) | promptfoo / deepeval / braintrust |
-|---|:---:|:---:|:---:|:---:|
-| Claude-Skills-native (`SKILL.md`, frontmatter, referenced files) | ✅ | ✅ | ✅ | ❌ generic prompts, no skill awareness |
-| OWASP Agentic Skills Top 10-mapped security scan | ✅ | ❌ | partial — scans skill content, not OWASP-mapped | ❌ |
-| Cross-model regression matrix, gated on *new* regressions only | ✅ | ❌ | ❌ | ✅ (generic, not skill-aware) |
-| Self-growing eval loop (a failure writes its own test case) | ✅ | ❌ | ❌ | ❌ |
-| Git-native bisect (binary-search commit history for the culprit) | ✅ | ❌ | ❌ | ❌ |
-| LLM-as-judge | ✅ CoT + caching + self-consistency | ✅ rubric-based | ❌ | ✅ |
-| Live editor integration | ✅ VS Code | ❌ | ❌ | ❌ |
-| Adversarial/red-team prompt fuzzing | ✅ 4 plugins, local-only generation, self-growing corpus | — | — | ✅ 50+ plugins, cloud-generated, no persistent corpus |
-| Hosted dashboard | ✅ opt-in, self-hosted | — | — | ✅ (braintrust) |
+|---|---|---|---|---|
+| Claude-Skills-native (`SKILL.md`, frontmatter, referenced files) | Yes | Yes | Yes | No — generic prompts, no skill awareness |
+| OWASP Agentic Skills Top 10-mapped security scan | Yes | No | Partial — scans skill content, not OWASP-mapped | No |
+| Cross-model regression matrix, gated on *new* regressions only | Yes | No | No | Yes — generic, not skill-aware |
+| Self-growing eval loop (a failure writes its own test case) | Yes | No | No | No |
+| Git-native bisect (binary-search commit history for the culprit) | Yes | No | No | No |
+| LLM-as-judge | Yes — CoT + caching + self-consistency | Yes — rubric-based | No | Yes |
+| Live editor integration | Yes — VS Code | No | No | No |
+| Adversarial/red-team prompt fuzzing | Yes — 4 plugins, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
+| Hosted dashboard | Yes — opt-in, self-hosted | — | — | Yes (braintrust) |
 
 Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins across categories (BOLA, RBAC, multi-turn crescendo attacks) skillci's 4 don't cover yet, with years of production hardening skillci's few-day-old redteam assertions haven't had. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
 
