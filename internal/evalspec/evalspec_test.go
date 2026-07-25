@@ -3,6 +3,7 @@ package evalspec
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -45,6 +46,37 @@ assert:
 	}
 	if c.Assert.MaxTokensLoaded == nil || *c.Assert.MaxTokensLoaded != 3000 {
 		t.Errorf("Assert.MaxTokensLoaded = %v, want 3000", c.Assert.MaxTokensLoaded)
+	}
+}
+
+// TestLoadDirRejectsDuplicateCaseNames covers two different eval files
+// under evals/ that happen to declare the same case name — an easy real
+// mistake (e.g. copy-pasting an existing case file and forgetting to
+// rename it). Without validation, every feature that looks a case up by
+// name (bisect's target selection, regress's per-(case,model) history
+// tracking, accept) becomes ambiguous between the two, silently: whichever
+// one sorts first wins with no signal that the other is being ignored.
+func TestLoadDirRejectsDuplicateCaseNames(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "a.yaml", "name: shared-name\nprompt: \"first\"\n")
+	writeCase(t, dir, "b.yaml", "name: shared-name\nprompt: \"second\"\n")
+
+	_, err := LoadDir(dir)
+	if err == nil {
+		t.Fatal("LoadDir() error = nil, want an error for duplicate case names across files")
+	}
+	if !strings.Contains(err.Error(), "shared-name") {
+		t.Errorf("LoadDir() error = %q, want it to name the duplicate case", err)
+	}
+}
+
+func TestLoadDirRejectsEmptyCaseName(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "unnamed.yaml", "prompt: \"no name field\"\n")
+
+	_, err := LoadDir(dir)
+	if err == nil {
+		t.Fatal("LoadDir() error = nil, want an error for a case with no name")
 	}
 }
 

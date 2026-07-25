@@ -135,6 +135,23 @@ func LoadDir(evalsDir string) ([]Case, error) {
 		c.SourceFile = path
 		cases = append(cases, c)
 	}
+
+	// Every feature that looks a case up by name (bisect's target
+	// selection, regress's per-(case,model) history tracking, accept)
+	// treats Name as a unique key — a duplicate or missing name would
+	// otherwise make that lookup silently ambiguous instead of failing
+	// loudly here, at load time, where the conflicting files are known.
+	seenAt := make(map[string]string, len(cases))
+	for _, c := range cases {
+		if c.Name == "" {
+			return nil, fmt.Errorf("%s: case has no name", c.SourceFile)
+		}
+		if prevFile, ok := seenAt[c.Name]; ok {
+			return nil, fmt.Errorf("duplicate case name %q in %s and %s", c.Name, prevFile, c.SourceFile)
+		}
+		seenAt[c.Name] = c.SourceFile
+	}
+
 	sort.Slice(cases, func(i, j int) bool { return cases[i].Name < cases[j].Name })
 	return cases, nil
 }

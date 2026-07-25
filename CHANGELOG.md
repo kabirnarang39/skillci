@@ -59,6 +59,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   for anything it doesn't recognize — so a user who configured what they
   thought was the strictest policy could end up with the loosest one and
   never find out.
+- `evals/*.yaml` case loading now rejects a missing `name:` or a name
+  duplicated across two different files. Previously undetected — every
+  feature that looks a case up by name (bisect's target selection,
+  regress's per-(case,model) history tracking, accept) treats the name as
+  a unique key, so a duplicate (an easy mistake: copy an existing case
+  file to start a new one, forget to rename it) silently made that lookup
+  ambiguous instead of failing loudly at load time.
 
 ## [v0.2.0] — 2026-07-24
 
