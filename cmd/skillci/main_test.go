@@ -1,6 +1,37 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"testing"
+)
+
+// TestNewRootCmdRegistersEverySubcommand covers main's wiring itself —
+// previously untested; a subcommand accidentally left off root.AddCommand
+// (a real mistake: every one of these is a manually maintained line) would
+// otherwise only be caught by someone noticing `skillci <name>` says
+// "unknown command" in the field.
+func TestNewRootCmdRegistersEverySubcommand(t *testing.T) {
+	want := []string{"init", "check", "eval", "regress", "accept", "badge", "diff", "fuzz", "bisect"}
+	root := newRootCmd()
+	for _, name := range want {
+		if cmd, _, err := root.Find([]string{name}); err != nil || cmd.Name() != name {
+			t.Errorf("subcommand %q not registered on root (err = %v)", name, err)
+		}
+	}
+}
+
+func TestNewRootCmdHelpRuns(t *testing.T) {
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute(--help) error = %v", err)
+	}
+	if out.Len() == 0 {
+		t.Error("--help produced no output")
+	}
+}
 
 // TestCommandsSilenceUsageOnError covers every subcommand whose RunE error
 // represents a normal, expected outcome (a regression detected, a failing

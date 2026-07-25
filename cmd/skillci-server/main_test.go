@@ -97,3 +97,22 @@ func TestParseTokensErrorsWhenNeitherVarIsSet(t *testing.T) {
 		t.Fatal("parseTokens() error = nil, want an error when neither env var is set")
 	}
 }
+
+func TestBuildServerErrorsWhenDatabaseURLNotSet(t *testing.T) {
+	t.Setenv("SKILLCI_DATABASE_URL", "")
+	t.Setenv("SKILLCI_INGEST_TOKEN", "token")
+
+	if _, _, err := buildServer(); err == nil {
+		t.Fatal("buildServer() error = nil, want error when SKILLCI_DATABASE_URL is not set")
+	}
+}
+
+func TestBuildServerPropagatesParseTokensError(t *testing.T) {
+	t.Setenv("SKILLCI_DATABASE_URL", "postgres://localhost/doesnotmatter")
+	t.Setenv("SKILLCI_INGEST_TOKENS", "")
+	t.Setenv("SKILLCI_INGEST_TOKEN", "")
+
+	if _, _, err := buildServer(); err == nil {
+		t.Fatal("buildServer() error = nil, want parseTokens' error when neither ingest token var is set")
+	}
+}

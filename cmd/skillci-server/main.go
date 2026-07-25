@@ -48,29 +48,38 @@ func parseTokens() ([]dashboard.TokenScope, error) {
 	return nil, fmt.Errorf("neither SKILLCI_INGEST_TOKENS nor SKILLCI_INGEST_TOKEN is set")
 }
 
-func main() {
+// buildServer does every setup step short of actually serving traffic —
+// split out from main so it's testable without a blocking
+// http.ListenAndServe call or a log.Fatal killing the test process.
+func buildServer() (mux *http.ServeMux, addr string, err error) {
 	dbURL := os.Getenv("SKILLCI_DATABASE_URL")
 	if dbURL == "" {
-		log.Fatal("SKILLCI_DATABASE_URL is not set")
+		return nil, "", fmt.Errorf("SKILLCI_DATABASE_URL is not set")
 	}
 	tokens, err := parseTokens()
 	if err != nil {
-		log.Fatal(err)
+		return nil, "", err
 	}
 
 	store, err := dashboard.NewStore(dbURL)
 	if err != nil {
-		log.Fatalf("connecting to database: %v", err)
+		return nil, "", fmt.Errorf("connecting to database: %w", err)
 	}
 	if err := store.Migrate(context.Background()); err != nil {
-		log.Fatalf("running migrations: %v", err)
+		return nil, "", fmt.Errorf("running migrations: %w", err)
 	}
 
-	mux := dashboard.NewServer(store, tokens)
-
-	addr := os.Getenv("SKILLCI_LISTEN_ADDR")
+	addr = os.Getenv("SKILLCI_LISTEN_ADDR")
 	if addr == "" {
 		addr = ":8080"
+	}
+	return dashboard.NewServer(store, tokens), addr, nil
+}
+
+func main() {
+	mux, addr, err := buildServer()
+	if err != nil {
+		log.Fatal(err)
 	}
 	fmt.Printf("skillci-server listening on %s\n", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))

@@ -9,7 +9,11 @@ import (
 
 var version = "dev"
 
-func main() {
+// newRootCmd wires every subcommand onto the root — split out from main
+// so the wiring itself (every subcommand actually registered, under the
+// name it's supposed to have) is testable without going through
+// os.Exit.
+func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:     "skillci",
 		Short:   "Lint, eval, and regression-test Claude Skills",
@@ -24,8 +28,11 @@ func main() {
 	root.AddCommand(newDiffCmd())
 	root.AddCommand(newFuzzCmd())
 	root.AddCommand(newBisectCmd())
+	return root
+}
 
-	if err := root.Execute(); err != nil {
+func main() {
+	if err := newRootCmd().Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

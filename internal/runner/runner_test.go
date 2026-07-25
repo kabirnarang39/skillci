@@ -30,6 +30,60 @@ func newSkillDir(t *testing.T) string {
 	return dir
 }
 
+// TestRunCaseMissingSkillMDErrors covers readSkillMeta's file-read error
+// branch -- previously untested; every existing test's skill dir has a
+// real SKILL.md.
+func TestRunCaseMissingSkillMDErrors(t *testing.T) {
+	dir := t.TempDir()
+	client := anthropic.NewClient("test-key")
+	c := evalspec.Case{Name: "x", Prompt: "hi"}
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+		t.Error("RunCase() error = nil, want error for a missing SKILL.md")
+	}
+}
+
+// TestRunCaseSkillMDMissingFrontmatterErrors covers readSkillMeta's
+// "doesn't start with ---" branch.
+func TestRunCaseSkillMDMissingFrontmatterErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("no frontmatter here\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := anthropic.NewClient("test-key")
+	c := evalspec.Case{Name: "x", Prompt: "hi"}
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+		t.Error("RunCase() error = nil, want error for SKILL.md with no frontmatter block")
+	}
+}
+
+// TestRunCaseSkillMDUnclosedFrontmatterErrors covers readSkillMeta's
+// "opening --- with no closing ---" branch.
+func TestRunCaseSkillMDUnclosedFrontmatterErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: x\ndescription: y\nBody with no closing marker.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := anthropic.NewClient("test-key")
+	c := evalspec.Case{Name: "x", Prompt: "hi"}
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+		t.Error("RunCase() error = nil, want error for an unclosed frontmatter block")
+	}
+}
+
+// TestRunCaseSkillMDInvalidYAMLFrontmatterErrors covers readSkillMeta's
+// yaml.Unmarshal error branch.
+func TestRunCaseSkillMDInvalidYAMLFrontmatterErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: [unterminated\n---\nBody.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	client := anthropic.NewClient("test-key")
+	c := evalspec.Case{Name: "x", Prompt: "hi"}
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+		t.Error("RunCase() error = nil, want error for malformed YAML frontmatter")
+	}
+}
+
 func stubServer(t *testing.T, replyText string, inputTokens int) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
