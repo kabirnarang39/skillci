@@ -45,6 +45,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   baseline even though it no longer reflected what the case actually
   produces. A case going back to matching golden now clears any pending
   change from an earlier drifted run.
+- `fuzz`'s synonym-swap operator only ever generated a mutation for the
+  *first* trigger-relevant word it found in a prompt — every other
+  eligible word (e.g. "fix" in "review and fix this code", with "review"
+  matched first) was silently never fuzz-tested at all, for the lifetime
+  of that eval case. Now generates one mutation per eligible word, each
+  swapping only that word, so a flipped trigger can still be attributed
+  to a specific swap.
 
 ## [v0.2.0] — 2026-07-24
 

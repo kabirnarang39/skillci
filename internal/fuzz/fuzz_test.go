@@ -15,6 +15,32 @@ func TestSynonymSwap(t *testing.T) {
 	}
 }
 
+// TestSynonymSwapProducesOneMutationPerEligibleWord covers a prompt with
+// more than one synonym-map hit ("review" and "fix" are both keys). Each
+// eligible word must get its own separate mutation, swapping only that
+// word — otherwise every word after the first eligible one is silently
+// never fuzz-tested at all, for the lifetime of that eval case.
+func TestSynonymSwapProducesOneMutationPerEligibleWord(t *testing.T) {
+	muts := Generate("Please review and fix this code")
+	wantPrompts := map[string]bool{
+		"Please check and fix this code":   false,
+		"Please review and repair this code": false,
+	}
+	for _, m := range muts {
+		if m.Operator != "synonym-swap" {
+			continue
+		}
+		if _, ok := wantPrompts[m.Prompt]; ok {
+			wantPrompts[m.Prompt] = true
+		}
+	}
+	for prompt, found := range wantPrompts {
+		if !found {
+			t.Errorf("Generate() synonym-swap mutations = missing %q — every eligible word must get its own mutation, not just the first one found", prompt)
+		}
+	}
+}
+
 func TestSynonymSwapNoHitReturnsNoSynonymMutation(t *testing.T) {
 	muts := Generate("What is the weather like today?")
 	for _, m := range muts {

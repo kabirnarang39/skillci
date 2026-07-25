@@ -47,8 +47,13 @@ func Generate(prompt string) []Mutation {
 	return out
 }
 
+// synonymSwapMutations generates one mutation per word that has a
+// synonym-map hit, swapping only that word each time — never all matches
+// at once — so a flipped trigger can be attributed to a specific swap
+// instead of conflating multiple simultaneous changes into one signal.
 func synonymSwapMutations(prompt string) []Mutation {
 	words := strings.Fields(prompt)
+	var out []Mutation
 	for i, w := range words {
 		bare := strings.TrimFunc(w, func(r rune) bool { return !isLetter(r) })
 		replacement, ok := synonymPairs[strings.ToLower(bare)]
@@ -61,9 +66,9 @@ func synonymSwapMutations(prompt string) []Mutation {
 		mutated := make([]string, len(words))
 		copy(mutated, words)
 		mutated[i] = strings.Replace(w, bare, replacement, 1)
-		return []Mutation{{Operator: "synonym-swap", Prompt: strings.Join(mutated, " ")}}
+		out = append(out, Mutation{Operator: "synonym-swap", Prompt: strings.Join(mutated, " ")})
 	}
-	return nil
+	return out
 }
 
 func isLetter(r rune) bool {
