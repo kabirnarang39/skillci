@@ -71,6 +71,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
   short-circuits on the first mismatched byte and turns request latency
   into a side channel an attacker could use to recover a valid token
   byte-by-byte rather than having to guess it whole.
+- The Anthropic API client now retries a transient failure (429 rate
+  limit, 500/502/503, or Anthropic's 529 "overloaded") up to 3 times with
+  backoff instead of failing immediately. Previously a single flaky
+  response failed the entire call — and, since `regress`'s matrix loop
+  aborts the whole run on the first error, wasted every already-completed
+  API call in that run, not just the one that hit it. A genuine client
+  error (e.g. 401 invalid key) still fails on the first attempt, since
+  retrying it can never succeed.
 
 ## [v0.2.0] — 2026-07-24
 

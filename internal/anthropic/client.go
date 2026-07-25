@@ -68,10 +68,43 @@ type sendResponse struct {
 	} `json:"error"`
 }
 
+// retryableStatuses are worth retrying: rate limits and transient
+// server-side failures. Anything else (400 bad request, 401 invalid key,
+// 404, ...) will fail identically on every retry, so retrying would only
+// waste time and API quota.
+var retryableStatuses = map[int]bool{
+	http.StatusTooManyRequests:     true, // 429
+	http.StatusInternalServerError: true, // 500
+	http.StatusBadGateway:          true, // 502
+	http.StatusServiceUnavailable:  true, // 503
+	529:                            true, // Anthropic-specific "overloaded"
+}
+
+// maxSendAttempts bounds retries: 1 initial attempt + 3 retries. A single
+// case/model call is one of potentially hundreds in a regress run — since
+// RunMatrix aborts the whole matrix on the first error, an unretried
+// transient failure used to waste every already-completed call in that
+// run, not just the one that hit it. Bounded rather than unlimited so a
+// server that never recovers still fails in bounded time instead of
+// retrying forever.
+const maxSendAttempts = 4
+
+// sendBackoff is the delay before retry attempt n (n=1 is the delay before
+// the 2nd overall attempt): 500ms, 1s, 2s. A package var so tests can
+// stub in a zero-delay function instead of spending real wall-clock time
+// on exponential backoff.
+var sendBackoff = func(attempt int) time.Duration {
+	return time.Duration(1<<uint(attempt-1)) * 500 * time.Millisecond
+}
+
 // Send issues one Messages API call and returns the concatenated text content
 // plus the input token count the API reports (used for max_tokens_loaded assertions).
+// Retries a bounded number of times on a retryable transient failure
+// (network error or a retryableStatuses HTTP status); Latency measures only
+// the final, successful attempt, not time spent on earlier failures or
+// backoff, so it stays a meaningful signal for max_latency_ms assertions
+// instead of being inflated by unrelated network flakiness.
 func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt string) (Message, error) {
-	start := time.Now()
 	body, err := json.Marshal(sendRequest{
 		Model:     model,
 		MaxTokens: 4096,
@@ -82,9 +115,37 @@ func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt strin
 		return Message{}, err
 	}
 
+	var lastErr error
+	for attempt := 1; attempt <= maxSendAttempts; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-time.After(sendBackoff(attempt - 1)):
+			case <-ctx.Done():
+				return Message{}, ctx.Err()
+			}
+		}
+
+		msg, retryable, err := c.sendOnce(ctx, body)
+		if err == nil {
+			return msg, nil
+		}
+		lastErr = err
+		if !retryable {
+			return Message{}, err
+		}
+	}
+	return Message{}, fmt.Errorf("after %d attempts: %w", maxSendAttempts, lastErr)
+}
+
+// sendOnce issues a single Messages API call. retryable reports whether a
+// non-nil err is worth retrying (a network-level failure or a
+// retryableStatuses HTTP status) as opposed to a permanent failure.
+func (c *Client) sendOnce(ctx context.Context, body []byte) (msg Message, retryable bool, err error) {
+	start := time.Now()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
-		return Message{}, err
+		return Message{}, false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", c.apiKey)
@@ -92,26 +153,26 @@ func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt strin
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return Message{}, err
+		return Message{}, true, err
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Message{}, err
+		return Message{}, true, err
 	}
 
 	var parsed sendResponse
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		return Message{}, fmt.Errorf("decoding response (status %d): %w", resp.StatusCode, err)
+		return Message{}, false, fmt.Errorf("decoding response (status %d): %w", resp.StatusCode, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		msg := "unknown error"
+		errMsg := "unknown error"
 		if parsed.Error != nil {
-			msg = parsed.Error.Message
+			errMsg = parsed.Error.Message
 		}
-		return Message{}, fmt.Errorf("anthropic API error (status %d): %s", resp.StatusCode, msg)
+		return Message{}, retryableStatuses[resp.StatusCode], fmt.Errorf("anthropic API error (status %d): %s", resp.StatusCode, errMsg)
 	}
 
 	var text string
@@ -125,5 +186,5 @@ func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt strin
 		InputTokens:  parsed.Usage.InputTokens,
 		OutputTokens: parsed.Usage.OutputTokens,
 		Latency:      time.Since(start),
-	}, nil
+	}, false, nil
 }
