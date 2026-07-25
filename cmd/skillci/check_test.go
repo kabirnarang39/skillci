@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -136,6 +137,10 @@ func TestCheckCommandRejectsInvalidFormat(t *testing.T) {
 // actually reaches the command's own output, not just that
 // lint.VerifyPinnedSources behaves correctly in isolation.
 func TestCheckCommandVerifyPinnedSourcesFlagsRealMismatch(t *testing.T) {
+	origDialer := lint.PinnedSourceDialer
+	lint.PinnedSourceDialer = (&net.Dialer{}).DialContext
+	t.Cleanup(func() { lint.PinnedSourceDialer = origDialer })
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "content has drifted since it was pinned")
 	}))

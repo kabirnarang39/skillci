@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- `check --verify-pinned-sources` no longer fetches loopback, private,
+  link-local, unspecified, or multicast addresses — a skill's own
+  `pinned_sources` frontmatter was previously fetched with no host
+  restriction, so a malicious skill could point it at an internal service
+  (e.g. a cloud metadata endpoint) and turn a hash check into SSRF
+  (CWE-918). The guard validates the resolved IP at actual dial time (for
+  the initial request and any redirect), closing the DNS-rebinding gap a
+  separate check-then-dial step would leave open.
+
 ## [v0.2.0] — 2026-07-24
 
 ### Added

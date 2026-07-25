@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -61,7 +62,10 @@ func VerifyPinnedSources(ctx context.Context, skillPath string) ([]Issue, error)
 		return nil, nil
 	}
 
-	client := &http.Client{Timeout: pinnedSourceTimeout}
+	client := &http.Client{
+		Timeout:   pinnedSourceTimeout,
+		Transport: &http.Transport{DialContext: PinnedSourceDialer},
+	}
 	var issues []Issue
 	for _, src := range meta.PinnedSources {
 		iss := verifyOnePinnedSource(ctx, client, skillPath, src)
@@ -119,4 +123,50 @@ func verifyOnePinnedSource(ctx context.Context, client *http.Client, skillPath s
 			Msg: fmt.Sprintf("pinned source %q content hash changed: declared sha256:%s, got sha256:%s — review the change before trusting it", url, wantHash, gotHash)}
 	}
 	return nil
+}
+
+// PinnedSourceDialer is the dialer VerifyPinnedSources' http.Client uses
+// for every connection (initial request and redirects, which share the
+// same Transport). It defaults to the SSRF-guarded safeDialContext and is
+// exported only so tests — in this package and others, e.g. cmd/skillci's
+// end-to-end check command tests — can swap in a plain dialer to reach an
+// httptest server on 127.0.0.1; save and restore it around the test
+// (t.Cleanup). Production code must never reassign this.
+var PinnedSourceDialer = safeDialContext
+
+// safeDialContext resolves addr's host and refuses to connect if any
+// resolved IP is loopback, private, link-local, unspecified, or multicast,
+// then dials the validated IP literal directly (not the hostname again) —
+// closing the DNS-rebinding gap that a separate "check then dial" step
+// would leave open.
+//
+// pinned_sources URLs come from a skill's own frontmatter — content
+// skillci is asked to verify, not content it has vetted — so without this
+// guard, --verify-pinned-sources would let any skill point skillci at an
+// internal service (e.g. a cloud metadata endpoint) and turn a hash check
+// into SSRF (CWE-918).
+func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
+	}
+	ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	if len(ips) == 0 {
+		return nil, fmt.Errorf("no addresses found for %s", host)
+	}
+	for _, candidate := range ips {
+		if !isPublicPinnedSourceIP(candidate.IP) {
+			return nil, fmt.Errorf("refusing to fetch pinned source: %s resolves to non-public address %s", host, candidate.IP)
+		}
+	}
+	d := &net.Dialer{}
+	return d.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+}
+
+func isPublicPinnedSourceIP(ip net.IP) bool {
+	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast())
 }

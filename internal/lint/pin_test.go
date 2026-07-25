@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +13,17 @@ import (
 	"strings"
 	"testing"
 )
+
+// allowLoopbackDial swaps out the SSRF-guarded dialer for a plain one, for
+// the duration of the calling test, so it can talk to an httptest server on
+// 127.0.0.1. The production default (PinnedSourceDialer = safeDialContext)
+// is restored automatically via t.Cleanup.
+func allowLoopbackDial(t *testing.T) {
+	t.Helper()
+	orig := PinnedSourceDialer
+	PinnedSourceDialer = (&net.Dialer{}).DialContext
+	t.Cleanup(func() { PinnedSourceDialer = orig })
+}
 
 func writePinnedSkill(t *testing.T, dir, pinnedYAML string) string {
 	t.Helper()
@@ -29,6 +41,7 @@ func hashOf(content string) string {
 }
 
 func TestVerifyPinnedSourcesNoIssueWhenHashMatches(t *testing.T) {
+	allowLoopbackDial(t)
 	const content = "the exact content this skill's author reviewed and pinned"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, content)
@@ -48,6 +61,7 @@ func TestVerifyPinnedSourcesNoIssueWhenHashMatches(t *testing.T) {
 }
 
 func TestVerifyPinnedSourcesFlagsHashMismatch(t *testing.T) {
+	allowLoopbackDial(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "content has changed since it was pinned")
 	}))
@@ -73,7 +87,9 @@ func TestVerifyPinnedSourcesFlagsHashMismatch(t *testing.T) {
 
 func TestVerifyPinnedSourcesFlagsUnreachableSource(t *testing.T) {
 	dir := t.TempDir()
-	// Port 1 is reserved/unassigned — connection refused, no real network needed.
+	// Port 1 is reserved/unassigned. 127.0.0.1 is also loopback, so the
+	// SSRF guard below rejects it before a connection is even attempted —
+	// either way, this must surface as unreachable.
 	skillPath := writePinnedSkill(t, dir, "pinned_sources:\n  - url: http://127.0.0.1:1\n    sha256: "+hashOf("x")+"\n")
 
 	issues, err := VerifyPinnedSources(context.Background(), skillPath)
@@ -88,6 +104,29 @@ func TestVerifyPinnedSourcesFlagsUnreachableSource(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("issues = %+v, want an ast02-pinned-source-unreachable issue", issues)
+	}
+}
+
+// TestVerifyPinnedSourcesRefusesNonPublicAddress proves the SSRF guard
+// itself fires — a malicious skill can't point pinned_sources at a
+// loopback/private/link-local address (e.g. a cloud metadata endpoint) to
+// turn --verify-pinned-sources into an internal-network probe.
+func TestVerifyPinnedSourcesRefusesNonPublicAddress(t *testing.T) {
+	dir := t.TempDir()
+	skillPath := writePinnedSkill(t, dir, "pinned_sources:\n  - url: http://127.0.0.1:1/\n    sha256: "+hashOf("x")+"\n")
+
+	issues, err := VerifyPinnedSources(context.Background(), skillPath)
+	if err != nil {
+		t.Fatalf("VerifyPinnedSources() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast02-pinned-source-unreachable" && strings.Contains(iss.Msg, "non-public") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want an ast02-pinned-source-unreachable issue mentioning a non-public address", issues)
 	}
 }
 
@@ -111,6 +150,7 @@ func TestVerifyPinnedSourcesFlagsNonHTTPScheme(t *testing.T) {
 }
 
 func TestVerifyPinnedSourcesFlagsMissingHash(t *testing.T) {
+	allowLoopbackDial(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "content")
 	}))
@@ -148,6 +188,7 @@ func TestVerifyPinnedSourcesNoIssuesWhenNoPinnedSourcesDeclared(t *testing.T) {
 }
 
 func TestVerifyPinnedSourcesFlagsOversizedResponse(t *testing.T) {
+	allowLoopbackDial(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write(make([]byte, maxPinnedSourceBytes+1))
 	}))
