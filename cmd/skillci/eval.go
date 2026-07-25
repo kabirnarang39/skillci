@@ -16,9 +16,10 @@ import (
 func newEvalCmd() *cobra.Command {
 	var model string
 	cmd := &cobra.Command{
-		Use:   "eval [path]",
-		Short: "Run a skill's eval suite against a single model",
-		Args:  cobra.MaximumNArgs(1),
+		Use:          "eval [path]",
+		Short:        "Run a skill's eval suite against a single model",
+		SilenceUsage: true,
+		Args:         cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {

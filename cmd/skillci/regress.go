@@ -25,9 +25,10 @@ import (
 func newRegressCmd() *cobra.Command {
 	var uploadFlag, autoBisectFlag, openPRFlag bool
 	cmd := &cobra.Command{
-		Use:   "regress [path]",
-		Short: "Run the eval suite across the configured model matrix and fail CI on new regressions",
-		Args:  cobra.MaximumNArgs(1),
+		Use:          "regress [path]",
+		Short:        "Run the eval suite across the configured model matrix and fail CI on new regressions",
+		SilenceUsage: true,
+		Args:         cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {

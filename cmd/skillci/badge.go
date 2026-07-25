@@ -12,9 +12,10 @@ import (
 
 func newBadgeCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "badge [path]",
-		Short: "Regenerate the SVG badge from the latest recorded history",
-		Args:  cobra.MaximumNArgs(1),
+		Use:          "badge [path]",
+		Short:        "Regenerate the SVG badge from the latest recorded history",
+		SilenceUsage: true,
+		Args:         cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {

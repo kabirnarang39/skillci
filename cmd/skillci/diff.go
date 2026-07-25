@@ -10,9 +10,10 @@ import (
 func newDiffCmd() *cobra.Command {
 	var path, model string
 	cmd := &cobra.Command{
-		Use:   "diff <case-name>",
-		Short: "Show a case's pending snapshot change against its accepted golden baseline",
-		Args:  cobra.ExactArgs(1),
+		Use:          "diff <case-name>",
+		Short:        "Show a case's pending snapshot change against its accepted golden baseline",
+		SilenceUsage: true,
+		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 

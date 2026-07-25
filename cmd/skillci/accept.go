@@ -12,9 +12,10 @@ import (
 func newAcceptCmd() *cobra.Command {
 	var path, model string
 	cmd := &cobra.Command{
-		Use:   "accept <case-name>",
-		Short: "Promote a generated eval case, or a pending snapshot change with --model, into the accepted state",
-		Args:  cobra.ExactArgs(1),
+		Use:          "accept <case-name>",
+		Short:        "Promote a generated eval case, or a pending snapshot change with --model, into the accepted state",
+		SilenceUsage: true,
+		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 

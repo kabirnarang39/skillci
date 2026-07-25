@@ -97,6 +97,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   scope, and a request sent with the literal header `Authorization:
   Bearer ` (empty bearer value) would match it — a real authentication
   bypass, not just a useless config entry.
+- `regress`, `eval`, `fuzz`, `bisect`, `accept`, `badge`, `diff`, and
+  `init` now silence Cobra's default "print the flags/usage block on any
+  RunE error" behavior, matching the precedent `check` already set (a
+  lint failure isn't user error). Caught via live end-to-end testing
+  with a local stub server: a normal `regress` failure — the single most
+  common outcome the tool exists to report in CI — was dumping a full
+  wall of flag help on every failing build.
 
 ## [v0.2.0] — 2026-07-24
 

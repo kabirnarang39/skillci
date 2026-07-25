@@ -22,9 +22,10 @@ import (
 func newBisectCmd() *cobra.Command {
 	var path, model, good, bad string
 	cmd := &cobra.Command{
-		Use:   "bisect <case-name>",
-		Short: "Binary-search a skill's git history to find which commit broke an eval case",
-		Args:  cobra.ExactArgs(1),
+		Use:          "bisect <case-name>",
+		Short:        "Binary-search a skill's git history to find which commit broke an eval case",
+		SilenceUsage: true,
+		Args:         cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runBisect(cmd.OutOrStdout(), args[0], path, model, good, bad)
 		},

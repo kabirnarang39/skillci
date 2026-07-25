@@ -22,9 +22,10 @@ assert:
 
 func newInitCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "init [path]",
-		Short: "Scaffold .skillci.yaml and an example eval case for a skill",
-		Args:  cobra.MaximumNArgs(1),
+		Use:          "init [path]",
+		Short:        "Scaffold .skillci.yaml and an example eval case for a skill",
+		SilenceUsage: true,
+		Args:         cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {

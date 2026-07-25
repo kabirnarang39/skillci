@@ -16,9 +16,10 @@ import (
 func newFuzzCmd() *cobra.Command {
 	var model string
 	cmd := &cobra.Command{
-		Use:   "fuzz [path]",
-		Short: "Run mutation-based robustness testing for a skill's fuzz-enabled eval cases",
-		Args:  cobra.MaximumNArgs(1),
+		Use:          "fuzz [path]",
+		Short:        "Run mutation-based robustness testing for a skill's fuzz-enabled eval cases",
+		SilenceUsage: true,
+		Args:         cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."
 			if len(args) == 1 {
