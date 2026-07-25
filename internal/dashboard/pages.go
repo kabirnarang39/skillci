@@ -15,8 +15,6 @@ import (
 // so both templates stay visually identical without duplicating rules.
 const commonStyle = `
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
 :root {
   --bg: #050506;
   --bg-elevated: #0c0c0f;
@@ -36,8 +34,8 @@ const commonStyle = `
   --radius: 12px;
   --radius-sm: 8px;
   --ease: cubic-bezier(0.16,1,0.3,1);
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
