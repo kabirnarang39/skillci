@@ -23,7 +23,7 @@ func TestSynonymSwap(t *testing.T) {
 func TestSynonymSwapProducesOneMutationPerEligibleWord(t *testing.T) {
 	muts := Generate("Please review and fix this code")
 	wantPrompts := map[string]bool{
-		"Please check and fix this code":   false,
+		"Please check and fix this code":     false,
 		"Please review and repair this code": false,
 	}
 	for _, m := range muts {

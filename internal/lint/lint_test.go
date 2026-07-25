@@ -995,3 +995,212 @@ func TestLintSkillNoBloatIssuesOnSmallCleanSkill(t *testing.T) {
 		}
 	}
 }
+
+// The tests below close a gap flagged after the body-line-offset fix:
+// TestLintSkillReportsRealFileLineNumberNotBodyRelative and
+// TestLintSkillMissingReferencedFileLineNumber each proved the offset
+// mechanism works for ONE caller of shiftIssueLines and ONE caller of the
+// inline lineNum computation respectively — "the helper is shared, so it
+// must work for every caller" is an argument, not a test. Each rule below
+// gets its own dedicated line-number assertion instead of only checking
+// that the rule fires.
+//
+// Two different frontmatter shapes are used across these tests
+// (1-line name-only, default 2-line name+description, and a 5-line
+// pinned_sources block) specifically so the offset formula is proven
+// against more than the one 2-line shape every other test in this file
+// happens to share — a formula that only happens to work for exactly one
+// frontmatter length would be a much narrower fix than it looks.
+
+func TestLintSkillReportsRealLineNumberForAST02(t *testing.T) {
+	dir := t.TempDir()
+	// 1-line frontmatter (just "name:") -> real frontmatter block is 3
+	// lines (---, name, ---), not the 4 every other test here uses.
+	writeSkill(t, dir, "name: my-skill\n", "Some intro text.\nnpm install foo@latest\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast02-unpinned-dependency" {
+			found = true
+			if iss.Line != 5 {
+				t.Errorf("ast02-unpinned-dependency issue has Line = %d, want 5 (real file line: 3-line frontmatter + body line 2)", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast02-unpinned-dependency issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForAST03BroadFilesystemAccess(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Filler line.\nRun: cat ~/.ssh/id_rsa\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-broad-filesystem-access" {
+			found = true
+			if iss.Line != 6 {
+				t.Errorf("ast03-broad-filesystem-access issue has Line = %d, want 6", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast03-broad-filesystem-access issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForPossibleSecret(t *testing.T) {
+	dir := t.TempDir()
+	// 5-field frontmatter (name, description, pinned_sources:, its url and
+	// sha256 entries) -> real frontmatter block is 7 lines: --- (1) +
+	// name (2) + description (3) + pinned_sources: (4) + - url (5) +
+	// sha256 (6) + --- (7).
+	fm := "name: my-skill\ndescription: Does a thing.\npinned_sources:\n  - url: https://example.com/x\n    sha256: abc123\n"
+	writeSkill(t, dir, fm, "Filler line.\napi_key: \"abcdefghijklmnopqrstuvwx\"\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "possible-secret" {
+			found = true
+			if iss.Line != 9 {
+				t.Errorf("possible-secret issue has Line = %d, want 9 (real file line: 7-line frontmatter + body line 2)", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want a possible-secret issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForBloatDuplicateLine(t *testing.T) {
+	dir := t.TempDir()
+	dup := "This is a duplicate line that is long enough to count."
+	body := dup + "\nFiller short.\n" + dup + "\n"
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", body)
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "bloat-duplicate-line" {
+			found = true
+			// dup is body line 1 (real line 5) and again body line 3 (real
+			// line 7) — only the second occurrence is flagged.
+			if iss.Line != 7 {
+				t.Errorf("bloat-duplicate-line issue has Line = %d, want 7 (the second occurrence's real file line)", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want a bloat-duplicate-line issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Filler line.\nSee scripts/../../etc/passwd for details.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast03-path-traversal" {
+			found = true
+			if iss.Line != 6 {
+				t.Errorf("ast03-path-traversal issue has Line = %d, want 6", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast03-path-traversal issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForBackslashPath(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Filler line.\nSee scripts\\helper.py for details.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast10-backslash-path-separator" {
+			found = true
+			if iss.Line != 6 {
+				t.Errorf("ast10-backslash-path-separator issue has Line = %d, want 6", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast10-backslash-path-separator issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForAbsolutePath(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Filler line.\nSee /home/user/scripts/helper.py for setup.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast10-absolute-path-reference" {
+			found = true
+			if iss.Line != 6 {
+				t.Errorf("ast10-absolute-path-reference issue has Line = %d, want 6", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast10-absolute-path-reference issue", issues)
+	}
+}
+
+func TestLintSkillReportsRealLineNumberForCaseMismatch(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/scripts", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir+"/scripts/helper.py", []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSkill(t, dir, "name: my-skill\ndescription: Does a thing.\n", "Filler line.\nSee scripts/Helper.py for details.\n")
+
+	issues, err := LintSkill(dir)
+	if err != nil {
+		t.Fatalf("LintSkill() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "ast10-case-mismatch" {
+			found = true
+			if iss.Line != 6 {
+				t.Errorf("ast10-case-mismatch issue has Line = %d, want 6", iss.Line)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LintSkill() issues = %v, want an ast10-case-mismatch issue", issues)
+	}
+}
