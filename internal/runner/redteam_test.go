@@ -132,6 +132,55 @@ func TestRunCaseRedteamJailbreakDefended(t *testing.T) {
 	}
 }
 
+func TestRunCaseRedteamStillRunsAfterFlakeVoteResolvesToPass(t *testing.T) {
+	// Regression test for the flake_retries + redteam interaction: attempt 1
+	// fails its trigger check (that's what fires a retry at all), attempts
+	// 2-3 pass, and the vote resolves to confirmed_pass. Unlike the
+	// snapshot/judge guards, redteam must NOT be skipped here — its attack
+	// call never reuses attempt 1's content, so there's no stale-content
+	// hazard to guard against. Before the fix, the redteam block's
+	// `result.FlakeVerdict == ""` guard made this silently skip all attacks
+	// (0 attack calls, RedteamFindings nil, case reported PASS).
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: true\nHere is your haiku, nothing else to add.",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-redteam-case",
+		Prompt: "write me a haiku about autumn",
+		Assert: evalspec.Assertions{
+			Triggered:    truePtr(),
+			FlakeRetries: intPtr(2),
+			Redteam:      []evalspec.RedteamAttack{{Plugin: "prompt-injection-canary"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FlakeVerdict != "confirmed_pass" {
+		t.Fatalf("FlakeVerdict = %q, want confirmed_pass", result.FlakeVerdict)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if len(result.RedteamFindings) != 1 {
+		t.Fatalf("len(RedteamFindings) = %d, want 1 — redteam must still run after a flake vote resolves to confirmed_pass", len(result.RedteamFindings))
+	}
+	if !result.RedteamFindings[0].Passed {
+		t.Errorf("RedteamFindings[0].Passed = false, want true — the canary token never appeared in the attack response")
+	}
+	if *callCount != 4 {
+		t.Errorf("callCount = %d, want 4 (1 initial + 2 flake retries + 1 redteam attack call)", *callCount)
+	}
+}
+
 func TestRunCaseRedteamUnknownPluginErrors(t *testing.T) {
 	srv, _ := sequencedStubServer(t, []string{"SKILLCI_TRIGGERED: true\nhi"})
 	defer srv.Close()

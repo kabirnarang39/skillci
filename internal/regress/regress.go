@@ -122,6 +122,26 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 				isSnapshotCase := c.Assert.Snapshot != nil && *c.Assert.Snapshot
 				isFuzzStrictCase := c.Assert.FuzzStrict != nil && *c.Assert.FuzzStrict
 				if !hadPrior && !isSnapshotCase && !isFuzzStrictCase {
+					// result.ResponseText is always the base-prompt response
+					// (e.g. a haiku) — for a case that failed because a
+					// redteam attack succeeded, the interesting content (the
+					// leaked canary token, the echoed system prompt, the
+					// jailbreak compliance phrase) lives only in
+					// RedteamFindings[].Reason. Append it so a human
+					// reviewing the generated case sees what actually leaked,
+					// not just the innocuous base response.
+					actualResponse := result.ResponseText
+					if len(result.RedteamFindings) > 0 {
+						var redteamParts []string
+						for _, f := range result.RedteamFindings {
+							if !f.Passed {
+								redteamParts = append(redteamParts, f.Name+": "+f.Reason)
+							}
+						}
+						if len(redteamParts) > 0 {
+							actualResponse = result.ResponseText + "\n\nRedteam findings:\n" + strings.Join(redteamParts, "\n")
+						}
+					}
 					report.GeneratedCases = append(report.GeneratedCases, GeneratedCase{
 						Case: evalspec.Case{
 							Name:           c.Name + "-generated-" + model,
@@ -131,7 +151,7 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 						},
 						Model:          model,
 						Timestamp:      time.Now(),
-						ActualResponse: result.ResponseText,
+						ActualResponse: actualResponse,
 					})
 				}
 			}

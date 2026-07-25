@@ -416,7 +416,15 @@ func TestRunMatrixGeneratesCaseForFirstTimeFailingRedteamAttack(t *testing.T) {
 		t.Fatalf("Outcomes = %+v, want one failed (redteam_strict) outcome", report.Outcomes)
 	}
 	if len(report.GeneratedCases) != 1 {
-		t.Errorf("GeneratedCases = %v, want 1 — a first-time-failing redteam attack is an uncovered failure like any other, with no regress.go changes needed", report.GeneratedCases)
+		t.Fatalf("GeneratedCases = %v, want 1 — a first-time-failing redteam attack is an uncovered failure like any other, with no regress.go changes needed", report.GeneratedCases)
+	}
+	// Finding 2 fix: ActualResponse must surface what actually leaked
+	// (the plugin's finding), not just the innocuous base haiku response —
+	// a reviewer reading the generated case file needs to see the attack
+	// result, not only the benign base-prompt reply.
+	actual := report.GeneratedCases[0].ActualResponse
+	if !strings.Contains(actual, "prompt-injection-canary") || !strings.Contains(actual, "leaked into the response") {
+		t.Errorf("ActualResponse = %q, want it to contain the redteam finding (plugin name and leak detail), not just the base response", actual)
 	}
 }
 

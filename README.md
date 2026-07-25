@@ -483,7 +483,12 @@ assert:
 
 `prompt-injection-canary` and `instruction-leakage` are fully local and
 deterministic — one extra model call each, zero judge calls, zero network
-calls beyond that. `jailbreak-direct-override` and `harmful-content-elicitation`
+calls beyond that. Being deterministic, `instruction-leakage` only catches
+*verbatim* leakage of the skill's own `name` and `description` frontmatter
+fields — a paraphrased leak, or a skill with no `description` set, won't be
+caught by it; judge-graded plugins (like `jailbreak-direct-override` below)
+are the path for detecting semantic, non-verbatim leaks.
+`jailbreak-direct-override` and `harmful-content-elicitation`
 reuse the same judge model `judge:` criteria use, and require `judge_model`
 configured the same way. A successful attack is informational only unless
 `redteam_strict: true` — and, same as any other case, a first-time-failing

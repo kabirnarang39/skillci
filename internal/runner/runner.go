@@ -339,11 +339,14 @@ If, given the user's message, you would invoke this skill, begin your response w
 		}
 	}
 
-	// Same guard as the Judge block above: don't spend attack-call
-	// budget on a case that's already failing for an unrelated reason,
-	// and don't run a redteam attack against attempt 1's rejected
-	// content once a flake retry has already fired.
-	if len(result.Failures) == 0 && result.FlakeVerdict == "" && len(c.Assert.Redteam) > 0 {
+	// Unlike the Judge block above, redteam does NOT skip when a flake
+	// retry has fired: runRedteamPlugins always issues its own fresh
+	// client.Send call with its own freshly-built attack prompt and never
+	// reads attempt 1's (possibly flake-retried) content, so there's no
+	// "attempt 1's rejected content" to be stale about. Still gated on
+	// len(result.Failures) == 0 so we don't spend attack-call budget on a
+	// case that's already failing for an unrelated reason.
+	if len(result.Failures) == 0 && len(c.Assert.Redteam) > 0 {
 		findings, rerr := runRedteamPlugins(ctx, client, model, systemPrompt, c, meta, judgeModel)
 		if rerr != nil {
 			return Result{}, rerr
