@@ -379,6 +379,45 @@ func TestWriteGeneratedCases(t *testing.T) {
 	}
 }
 
+// TestWriteGeneratedCasesOmitsUnsetFields covers what the human reviewer
+// actually sees: a generated case only ever sets Triggered on Assert (the
+// one field RunMatrix's failure path is guaranteed to know), leaving every
+// other Assertions field at its zero value. Without omitempty tags on
+// evalspec.Assertions, yaml.Marshal spells out all ~15 of them as `null`
+// or `[]` — exactly the noise the self-growing eval loop's whole point
+// (a clean case a human reviews before `accept`) is supposed to avoid.
+// Caught live: accepting a real generated case showed the bloated file.
+func TestWriteGeneratedCasesOmitsUnsetFields(t *testing.T) {
+	dir := newSkillDir(t)
+	cases := []GeneratedCase{{
+		Case:      evalspec.Case{Name: "generated-case", Prompt: "some failing prompt", SkillUnderTest: "pr-review", Assert: evalspec.Assertions{Triggered: boolPtr(true)}},
+		Model:     "claude-sonnet-5",
+		Timestamp: time.Now(),
+	}}
+
+	paths, err := WriteGeneratedCases(dir, cases)
+	if err != nil {
+		t.Fatalf("WriteGeneratedCases() error = %v", err)
+	}
+	data, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := string(data)
+	if strings.Contains(content, "null") {
+		t.Errorf("file content = %q, want no null fields for assertions the case never set", content)
+	}
+	if strings.Contains(content, "judge_strict") || strings.Contains(content, "flake_retries") || strings.Contains(content, "max_cost_usd") {
+		t.Errorf("file content = %q, want unset assertion fields omitted entirely, not written out empty", content)
+	}
+	if !strings.Contains(content, "triggered: true") {
+		t.Errorf("file content = %q, want the one field that IS set (triggered) still present", content)
+	}
+}
+
+func boolPtr(v bool) *bool { return &v }
+
 func TestScanStaleGeneratedCasesFlagsOldFile(t *testing.T) {
 	dir := newSkillDir(t)
 	old := time.Now().Add(-30 * 24 * time.Hour)

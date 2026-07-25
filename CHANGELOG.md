@@ -111,6 +111,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
   source showed both `Error: 1 lint issue(s) found` and a bare repeat of
   the same text. Root command now sets `SilenceErrors: true`, leaving
   main()'s own print as the single source of truth.
+- Generated eval case files (`evals/_generated/*.yaml`, written by the
+  self-growing eval loop) spelled out every `Assertions` field the case
+  never set as a literal `null` or `[]` — around 15 lines of noise for a
+  typical case that only sets `triggered`. Caught live: `accept`-ing a
+  real generated case showed the bloated file. `evalspec.Assertions`'
+  YAML tags now carry `omitempty`, so a generated case reads as cleanly
+  as a hand-written one. Read behavior (parsing an existing
+  `evals/*.yaml`) is unaffected — `omitempty` only changes marshaling.
 
 ## [v0.2.0] — 2026-07-24
 

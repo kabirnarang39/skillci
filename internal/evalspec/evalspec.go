@@ -10,26 +10,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// yaml tags below all carry omitempty: an unset assertion must not be
+// written out as a literal `null`/`[]` when a Case is marshaled back to
+// YAML (WriteGeneratedCases, for the self-growing eval loop) — the whole
+// point of a generated case file is a human reviewing it before `accept`,
+// and ~15 fields nobody set spelled out one per line is exactly the noise
+// that review doesn't need. Doesn't affect reading a hand-written
+// evals/*.yaml file at all (omitempty only changes marshaling behavior).
 type Assertions struct {
-	Triggered       *bool    `yaml:"triggered"`
-	Contains        []string `yaml:"contains"`
-	NotContains     []string `yaml:"not_contains"`
-	MaxTokensLoaded *int     `yaml:"max_tokens_loaded"`
+	Triggered       *bool    `yaml:"triggered,omitempty"`
+	Contains        []string `yaml:"contains,omitempty"`
+	NotContains     []string `yaml:"not_contains,omitempty"`
+	MaxTokensLoaded *int     `yaml:"max_tokens_loaded,omitempty"`
 	// Snapshot opts a case into capturing a per-model golden-baseline
 	// response and diffing future runs against it. A detected diff is
 	// informational only unless SnapshotStrict is also true.
-	Snapshot *bool `yaml:"snapshot"`
+	Snapshot *bool `yaml:"snapshot,omitempty"`
 	// SnapshotStrict makes a detected snapshot diff a hard case failure,
 	// same as any other assertion. Meaningless if Snapshot is not true.
-	SnapshotStrict *bool `yaml:"snapshot_strict"`
+	SnapshotStrict *bool `yaml:"snapshot_strict,omitempty"`
 	// Fuzz opts a case into robustness testing: deterministic paraphrases
 	// of Prompt are generated and each is checked against Triggered. Only
 	// meaningful when Triggered is also set — there's nothing for a
 	// mutation's outcome to flip against otherwise.
-	Fuzz *bool `yaml:"fuzz"`
+	Fuzz *bool `yaml:"fuzz,omitempty"`
 	// FuzzStrict makes a flipped mutation a hard case failure, same as any
 	// other assertion. Meaningless if Fuzz is not true.
-	FuzzStrict *bool `yaml:"fuzz_strict"`
+	FuzzStrict *bool `yaml:"fuzz_strict,omitempty"`
 	// FuzzLLM additionally generates paraphrases via the model itself,
 	// testing against realistic rewording a fixed synonym dictionary
 	// structurally can't anticipate — the failure mode this catches
@@ -40,25 +47,25 @@ type Assertions struct {
 	// and non-determinism are paid once, not on every run. Meaningless if
 	// Fuzz is not true — it adds mutations to the same fuzz pass, it
 	// doesn't run independently.
-	FuzzLLM *bool `yaml:"fuzz_llm"`
+	FuzzLLM *bool `yaml:"fuzz_llm,omitempty"`
 	// MaxOutputTokens caps the response length. A violation is always a
 	// hard case failure, same as MaxTokensLoaded.
-	MaxOutputTokens *int `yaml:"max_output_tokens"`
+	MaxOutputTokens *int `yaml:"max_output_tokens,omitempty"`
 	// MaxLatencyMs caps the wall-clock time of the model call. Unlike
 	// MaxOutputTokens/MaxCostUSD, a violation is informational only
 	// unless LatencyStrict is also true — latency reflects network/
 	// inference variance, not skill behavior, so it gets the same
 	// non-strict-by-default treatment as Snapshot/Fuzz.
-	MaxLatencyMs *int64 `yaml:"max_latency_ms"`
+	MaxLatencyMs *int64 `yaml:"max_latency_ms,omitempty"`
 	// LatencyStrict makes an exceeded latency cap a hard case failure,
 	// same as any other assertion. Meaningless if MaxLatencyMs is not set.
-	LatencyStrict *bool `yaml:"latency_strict"`
+	LatencyStrict *bool `yaml:"latency_strict,omitempty"`
 	// MaxCostUSD caps the estimated dollar cost of the call, computed from
 	// token counts and the model's pricing entry in .skillci.yaml. A
 	// violation is always a hard case failure. A case using this
 	// assertion for a model with no pricing entry configured fails with a
 	// clear "no pricing configured" message, never silently skipped.
-	MaxCostUSD *float64 `yaml:"max_cost_usd"`
+	MaxCostUSD *float64 `yaml:"max_cost_usd,omitempty"`
 	// FlakeRetries reruns the case up to N additional times when its
 	// trigger-related assertions (Triggered/Contains/NotContains) fail on
 	// the first attempt, taking a majority verdict across all attempts
@@ -66,23 +73,23 @@ type Assertions struct {
 	// (MaxTokensLoaded/MaxOutputTokens/MaxLatencyMs/MaxCostUSD) are never
 	// retried — they're checked once against the first attempt only, same
 	// as today.
-	FlakeRetries *int `yaml:"flake_retries"`
+	FlakeRetries *int `yaml:"flake_retries,omitempty"`
 	// FlakeStrict makes an unresolved tie (no majority reached across all
 	// attempts) a hard case failure. Meaningless if FlakeRetries is not
 	// set. Without it, a tie is informational only.
-	FlakeStrict *bool `yaml:"flake_strict"`
+	FlakeStrict *bool `yaml:"flake_strict,omitempty"`
 	// Judge lists criteria a separate judge model evaluates against the
 	// response, once every other assertion has already passed. All
 	// criteria must pass for the judge step itself to pass. Requires
 	// JudgeModel to be configured in .skillci.yaml — a case using Judge
 	// with no judge_model configured fails with a clear error, never
 	// silently skipped.
-	Judge []JudgeCriterion `yaml:"judge"`
+	Judge []JudgeCriterion `yaml:"judge,omitempty"`
 	// JudgeStrict makes a failing criterion a hard case failure. Without
 	// it, a judge failure is informational only — the same
 	// non-strict-by-default pattern as Snapshot/Fuzz/MaxLatencyMs/
 	// FlakeRetries.
-	JudgeStrict *bool `yaml:"judge_strict"`
+	JudgeStrict *bool `yaml:"judge_strict,omitempty"`
 }
 
 // JudgeCriterion is one named rubric item a judge model evaluates a
@@ -102,7 +109,7 @@ type Case struct {
 	// to skillci itself beyond matching against config.StrictDimensions
 	// and grouping in CLI/dashboard output. A case with no dimensions:
 	// block behaves exactly as before this field existed.
-	Dimensions map[string]string `yaml:"dimensions"`
+	Dimensions map[string]string `yaml:"dimensions,omitempty"`
 	SourceFile string            `yaml:"-"`
 }
 
