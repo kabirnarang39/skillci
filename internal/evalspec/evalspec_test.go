@@ -419,3 +419,35 @@ func TestLoadDirRejectsYAMLAliasBombQuickly(t *testing.T) {
 		t.Fatal("LoadDir() did not return within 5s — alias-bomb protection regressed")
 	}
 }
+
+func TestLoadDirParsesRedteamAssertion(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: attack-case\nprompt: hi\nassert:\n  redteam:\n    - plugin: prompt-injection-canary\n    - plugin: jailbreak-direct-override\n  redteam_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "case.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cases, err := LoadDir(filepath.Join(dir, "evals"))
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	if len(cases) != 1 {
+		t.Fatalf("len(cases) = %d, want 1", len(cases))
+	}
+	redteam := cases[0].Assert.Redteam
+	if len(redteam) != 2 {
+		t.Fatalf("len(Redteam) = %d, want 2", len(redteam))
+	}
+	if redteam[0].Plugin != "prompt-injection-canary" {
+		t.Errorf("Redteam[0].Plugin = %q, want prompt-injection-canary", redteam[0].Plugin)
+	}
+	if redteam[1].Plugin != "jailbreak-direct-override" {
+		t.Errorf("Redteam[1].Plugin = %q, want jailbreak-direct-override", redteam[1].Plugin)
+	}
+	if cases[0].Assert.RedteamStrict == nil || !*cases[0].Assert.RedteamStrict {
+		t.Error("RedteamStrict = nil or false, want true")
+	}
+}

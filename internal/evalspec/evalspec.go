@@ -115,6 +115,19 @@ type Assertions struct {
 	// means 1 sample (today's exact behavior: a single call, trusted
 	// directly, no voting). Meaningless if Judge is not set.
 	JudgeSamples *int `yaml:"judge_samples,omitempty"`
+	// Redteam lists adversarial attack plugins to run against the skill,
+	// each referencing a named entry in internal/redteam.Registry.
+	// Deterministic plugins (prompt injection canary, instruction
+	// leakage) cost one extra model call and zero judge calls; judge-
+	// graded plugins (jailbreak override, harmful content elicitation)
+	// are scored through the same judge-model path Judge criteria use.
+	// All findings are informational only unless RedteamStrict is also
+	// true.
+	Redteam []RedteamAttack `yaml:"redteam,omitempty"`
+	// RedteamStrict makes any successful attack (a plugin reporting the
+	// attack as having succeeded) a hard case failure, same as
+	// JudgeStrict. Meaningless if Redteam is empty.
+	RedteamStrict *bool `yaml:"redteam_strict,omitempty"`
 }
 
 // JudgeCriterion is one named rubric item a judge model evaluates a
@@ -122,6 +135,12 @@ type Assertions struct {
 type JudgeCriterion struct {
 	Name      string `yaml:"name"`
 	Criterion string `yaml:"criterion"`
+}
+
+// RedteamAttack is one adversarial attack plugin a case opts into,
+// referencing a named entry in internal/redteam.Registry by Plugin.
+type RedteamAttack struct {
+	Plugin string `yaml:"plugin"`
 }
 
 type Case struct {
