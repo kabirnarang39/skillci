@@ -10,18 +10,40 @@
 
 A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
 
+[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Commands](#commands) · [Status](#status)
+
 ## What's inside
 
 | | |
 |---|---|
 | **Self-growing eval loop** | An uncovered regression writes its own permanent test case instead of just failing once. |
 | **Git-native bisect** | `skillci bisect` binary-searches your skill's own commit history with a real `git worktree` — not a synthetic version store. |
-| **Deterministic fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) checks trigger-prompt robustness without random model calls. |
+| **Local-only security lint** | OWASP Agentic Skills Top 10-mapped static scan plus skill-bloat checks — zero API calls, zero network calls unless you opt into `--verify-pinned-sources`. |
+| **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
+| **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. |
 | **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample. |
 | **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
-| **Optional LLM-as-judge** | `judge:` criteria scored by a separate, non-self-judging model — opt-in, informational by default. |
-| **Local-only lint** | Security scan (OWASP Agentic Skills Top 10) and skill-bloat checks, zero API calls. |
 | **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
+| **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
+| **Optional hosted dashboard** | Per-skill compatibility history and a public "still passes on this week's model" badge, Postgres-backed, entirely opt-in. |
+
+## How this compares
+
+Every other tool in this space does one slice of what skillci does — none combine OWASP-mapped skill security scanning, cross-model regression testing, git-native culprit-commit bisection, and a self-growing eval loop in one tool. This table reflects each tool's publicly documented capabilities; if something here is out of date, please open an issue.
+
+| | **skillci** | [skillgrade](https://github.com/mgechev/skillgrade) | [AgentLinter](https://agentlinter.com) | promptfoo / deepeval / braintrust |
+|---|:---:|:---:|:---:|:---:|
+| Claude-Skills-native (`SKILL.md`, frontmatter, referenced files) | ✅ | ✅ | ✅ | ❌ generic prompts, no skill awareness |
+| OWASP Agentic Skills Top 10-mapped security scan | ✅ | ❌ | partial — scans skill content, not OWASP-mapped | ❌ |
+| Cross-model regression matrix, gated on *new* regressions only | ✅ | ❌ | ❌ | ✅ (generic, not skill-aware) |
+| Self-growing eval loop (a failure writes its own test case) | ✅ | ❌ | ❌ | ❌ |
+| Git-native bisect (binary-search commit history for the culprit) | ✅ | ❌ | ❌ | ❌ |
+| LLM-as-judge | ✅ CoT + caching + self-consistency | ✅ rubric-based | ❌ | ✅ |
+| Live editor integration | ✅ VS Code | ❌ | ❌ | ❌ |
+| Adversarial/red-team prompt fuzzing | deterministic + LLM-paraphrase | — | — | ✅ more mature red-teaming than skillci's |
+| Hosted dashboard | ✅ opt-in, self-hosted | — | — | ✅ (braintrust) |
+
+Where a competitor is genuinely ahead — promptfoo's adversarial red-teaming module is more sophisticated than skillci's fuzz today — that's called out, not glossed over.
 
 ## Why
 
@@ -47,7 +69,7 @@ against.
 **Go install** (any platform with Go 1.25+):
 
 ```bash
-go install github.com/kabirnarang39/skillci/cmd/skillci@v0.1.0
+go install github.com/kabirnarang39/skillci/cmd/skillci@v0.3.0
 ```
 
 An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not for `check`, which is local-only and free).
@@ -534,16 +556,16 @@ though the rest of the suite is gated more loosely.
 ## GitHub Actions
 
 ```yaml
-- uses: kabirnarang39/skillci/.github/actions/skillci@v0.2.0
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.3.0
   with:
     path: path/to/your-skill
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-Pin the action itself to a release tag (`@v0.2.0` above), not `@main` —
+Pin the action itself to a release tag (`@v0.3.0` above), not `@main` —
 `@main` floats onto whatever the action definition looks like next,
 silently changing your CI's behavior with no version control. The
-`version` input (defaults to `v0.2.0`) pins which `skillci` CLI binary
+`version` input (defaults to `v0.3.0`) pins which `skillci` CLI binary
 gets installed, separately from the action reference; override it once a
 newer tag ships, or set it to `latest` if you deliberately want to float
 (not recommended for production — every consumer's CI would silently
@@ -557,7 +579,7 @@ updated on every subsequent push to that PR rather than piling up a new
 one each time:
 
 ```yaml
-- uses: kabirnarang39/skillci/.github/actions/skillci@v0.2.0
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.3.0
   with:
     path: path/to/your-skill
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}

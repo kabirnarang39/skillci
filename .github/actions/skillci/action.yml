@@ -8,7 +8,7 @@ inputs:
   version:
     description: "skillci version to install (a git tag, or 'latest' to float on main — not recommended for production, since it means every consumer's CI silently picks up whatever ships next with no build reproducibility)"
     required: false
-    default: "v0.2.0"
+    default: "v0.3.0"
   anthropic-api-key:
     description: "Anthropic API key"
     required: true

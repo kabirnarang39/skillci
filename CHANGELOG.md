@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.0] — 2026-07-25
+
 ### Added
 - `check`'s `judge`/`judge_strict` assertion now reasons step-by-step
   before each verdict (the G-Eval technique promptfoo's `llm-rubric` and
@@ -131,6 +133,24 @@ and this project follows [Semantic Versioning](https://semver.org/).
   YAML tags now carry `omitempty`, so a generated case reads as cleanly
   as a hand-written one. Read behavior (parsing an existing
   `evals/*.yaml`) is unaffected — `omitempty` only changes marshaling.
+- A case's own `assert.judge_mode` override had no validation, unlike the
+  global `judge_mode` in `.skillci.yaml` (rejected at load time). A typo
+  like `judge_mode: isloated` on a case silently fell through to
+  `"batched"` instead of failing loud. Now rejected with a clear error
+  naming the case and the invalid value.
+- `judgecache.Cache.Samples` returned its internal `[]Sample` slice
+  directly — a caller mutating the result (or one of its elements) could
+  corrupt the cache's own stored data. Now returns a copy.
+
+### Changed
+- The GitHub Action's `version` input now defaults to `v0.3.0`, and the
+  README's own examples (`go install`, the Action reference, the
+  `version` input) are bumped to match.
+- README: added a "How this compares" section (an honest, sourced
+  comparison against skillgrade, AgentLinter, and promptfoo/deepeval/
+  braintrust) and expanded "What's inside" to surface the VS Code
+  extension and hosted dashboard, both previously undocumented above the
+  fold.
 
 ## [v0.2.0] — 2026-07-24
 
