@@ -456,7 +456,7 @@ bisecting...
   8c7d6e5 — fail
 
 culprit: 6a5b4c3d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3
-author:  Kabir Narang <kabir.narang@zinier.com>
+author:  Kabir Narang <kabirnarang39@gmail.com>
 date:    2026-07-10
 message: tighten haiku-writer's tone guidance
 

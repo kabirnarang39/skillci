@@ -18,7 +18,7 @@ go install github.com/kabirnarang39/skillci/cmd/skillci@latest
 "Report a vulnerability". This opens a private advisory only you and the
 maintainer can see — not a public issue.
 
-**Alternative:** email kabir.narang@zinier.com with a description and, if
+**Alternative:** email kabirnarang39@gmail.com with a description and, if
 possible, a minimal reproduction.
 
 Please do not open a public GitHub issue for a suspected vulnerability.
