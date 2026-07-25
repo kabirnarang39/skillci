@@ -51,6 +51,10 @@ type Result struct {
 	// judge step actually ran (every other assertion passed and no flake
 	// retry fired) — see the judge block in RunCase.
 	JudgeFindings []JudgeFinding
+	// RedteamFindings is nil unless the case has Redteam plugins AND the
+	// redteam step actually ran (same guard as JudgeFindings) — see the
+	// redteam block in RunCase.
+	RedteamFindings []JudgeFinding
 }
 
 // JudgeFinding is one criterion's verdict from the judge model.
@@ -332,6 +336,27 @@ If, given the user's message, you would invoke this skill, begin your response w
 		}
 		if failed > 0 && c.Assert.JudgeStrict != nil && *c.Assert.JudgeStrict {
 			result.Failures = append(result.Failures, fmt.Sprintf("judge: %d/%d criteria failed", failed, len(findings)))
+		}
+	}
+
+	// Same guard as the Judge block above: don't spend attack-call
+	// budget on a case that's already failing for an unrelated reason,
+	// and don't run a redteam attack against attempt 1's rejected
+	// content once a flake retry has already fired.
+	if len(result.Failures) == 0 && result.FlakeVerdict == "" && len(c.Assert.Redteam) > 0 {
+		findings, rerr := runRedteamPlugins(ctx, client, model, systemPrompt, c, meta, judgeModel)
+		if rerr != nil {
+			return Result{}, rerr
+		}
+		result.RedteamFindings = findings
+		failed := 0
+		for _, f := range findings {
+			if !f.Passed {
+				failed++
+			}
+		}
+		if failed > 0 && c.Assert.RedteamStrict != nil && *c.Assert.RedteamStrict {
+			result.Failures = append(result.Failures, fmt.Sprintf("redteam: %d/%d attacks succeeded", failed, len(findings)))
 		}
 	}
 

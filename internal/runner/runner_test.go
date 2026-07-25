@@ -4,6 +4,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1272,6 +1273,38 @@ func sequencedStubServer(t *testing.T, texts []string) (*httptest.Server, *int) 
 		json.NewEncoder(w).Encode(resp)
 	}))
 	return srv, &callCount
+}
+
+// sequencedStubServerFunc is sequencedStubServer's generalization: instead
+// of a fixed response list, respond(callIndex, requestBody) computes each
+// response, for tests where a later response must depend on request
+// content the test can't predict in advance (e.g. a canary token embedded
+// in an attack prompt built with a real random value).
+func sequencedStubServerFunc(t *testing.T, respond func(callIndex int, requestBody string) string) (*httptest.Server, *int) {
+	t.Helper()
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		text := respond(callCount, string(body))
+		callCount++
+		fmt.Fprintf(w, `{"content":[{"type":"text","text":%q}],"usage":{"input_tokens":10,"output_tokens":5}}`, text)
+	}))
+	return srv, &callCount
+}
+
+// extractCanaryToken pulls the "CANARY-xxxxxxxx" token out of a raw JSON
+// request body sent to the stub server — the attack prompt embeds it as
+// plain text inside the request's "messages" field.
+func extractCanaryToken(requestBody string) string {
+	idx := strings.Index(requestBody, "CANARY-")
+	if idx == -1 {
+		return ""
+	}
+	end := idx + len("CANARY-") + 8 // randomHex(4) = 8 hex chars
+	if end > len(requestBody) {
+		end = len(requestBody)
+	}
+	return requestBody[idx:end]
 }
 
 func TestRunCaseFlakeRetriesConfirmedPassAfterInitialFailure(t *testing.T) {
