@@ -266,14 +266,15 @@ const judgeMarkerPrefix = "SKILLCI_JUDGE:"
 // parses its structured per-criterion verdict lines — exactly one API
 // call regardless of how many criteria are configured.
 func runJudge(ctx context.Context, client *anthropic.Client, judgeModel, response string, criteria []evalspec.JudgeCriterion) ([]JudgeFinding, error) {
-	systemPrompt := `You are an impartial judge evaluating an AI assistant's response against a list of criteria. For each criterion, decide PASS or FAIL and respond with exactly one line per criterion in this format:
+	systemPrompt := `You are an impartial judge evaluating an AI assistant's response against a list of criteria. For each criterion, first reason step by step about whether the response satisfies it, then give a verdict. Respond with exactly two lines per criterion, in this order:
 
+SKILLCI_JUDGE_REASONING: <criterion name>: <your step-by-step reasoning>
 SKILLCI_JUDGE: <criterion name> = PASS
 SKILLCI_JUDGE: <criterion name> = FAIL: <short reason>
 
 Use the exact criterion name verbatim — do not paraphrase or alter it.
 
-Output nothing else — no preamble, no summary, just one SKILLCI_JUDGE line per criterion, in the order given.`
+Output nothing else — no preamble, no summary, just the reasoning and verdict lines for each criterion, in the order given.`
 
 	var userPrompt strings.Builder
 	userPrompt.WriteString("Criteria:\n")
@@ -290,42 +291,75 @@ Output nothing else — no preamble, no summary, just one SKILLCI_JUDGE line per
 	return parseJudgeVerdicts(msg.Text, criteria), nil
 }
 
+const judgeReasoningPrefix = "SKILLCI_JUDGE_REASONING:"
+
 // parseJudgeVerdicts matches each configured criterion's name against a
-// SKILLCI_JUDGE: <name> = PASS|FAIL(: reason)? line in text. A criterion
-// with no matching line — missing or malformed — is treated as FAIL with
-// an explanatory reason, never silently dropped from the result.
+// SKILLCI_JUDGE: <name> = PASS|FAIL(: reason)? line in text, and
+// separately collects any SKILLCI_JUDGE_REASONING: <name>: <reasoning>
+// line for that criterion. Reason precedence: an explicit inline
+// "FAIL: <reason>" on the verdict line always wins (a judge model that
+// gives both a reasoning line and a concise inline reason should never
+// have the concise one silently discarded); otherwise a matching
+// reasoning line is used; otherwise PASS gets an empty Reason and a bare
+// FAIL gets "no reason given" — both unchanged from before this
+// reasoning support existed. A missing or malformed reasoning line never
+// blocks verdict parsing — it's best-effort context, not a correctness
+// gate. A criterion with no matching verdict line at all — missing or
+// malformed — is treated as FAIL with an explanatory reason, never
+// silently dropped.
 func parseJudgeVerdicts(text string, criteria []evalspec.JudgeCriterion) []JudgeFinding {
+	reasoning := make(map[string]string)
 	verdicts := make(map[string]JudgeFinding, len(criteria))
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, judgeMarkerPrefix) {
-			continue
-		}
-		rest := strings.TrimSpace(strings.TrimPrefix(line, judgeMarkerPrefix))
-		name, verdict, ok := strings.Cut(rest, "=")
-		if !ok {
-			continue
-		}
-		name = strings.TrimSpace(name)
-		verdict = strings.TrimSpace(verdict)
 		switch {
-		case verdict == "PASS":
-			verdicts[name] = JudgeFinding{Name: name, Passed: true}
-		case strings.HasPrefix(verdict, "FAIL:"):
-			reason := strings.TrimSpace(strings.TrimPrefix(verdict, "FAIL:"))
-			verdicts[name] = JudgeFinding{Name: name, Passed: false, Reason: reason}
-		case verdict == "FAIL":
-			verdicts[name] = JudgeFinding{Name: name, Passed: false, Reason: "no reason given"}
+		case strings.HasPrefix(line, judgeReasoningPrefix):
+			rest := strings.TrimSpace(strings.TrimPrefix(line, judgeReasoningPrefix))
+			name, reason, ok := strings.Cut(rest, ":")
+			if !ok {
+				continue
+			}
+			reasoning[strings.TrimSpace(name)] = strings.TrimSpace(reason)
+		case strings.HasPrefix(line, judgeMarkerPrefix):
+			rest := strings.TrimSpace(strings.TrimPrefix(line, judgeMarkerPrefix))
+			name, verdict, ok := strings.Cut(rest, "=")
+			if !ok {
+				continue
+			}
+			name = strings.TrimSpace(name)
+			verdict = strings.TrimSpace(verdict)
+			switch {
+			case verdict == "PASS":
+				verdicts[name] = JudgeFinding{Name: name, Passed: true}
+			case strings.HasPrefix(verdict, "FAIL:"):
+				reason := strings.TrimSpace(strings.TrimPrefix(verdict, "FAIL:"))
+				verdicts[name] = JudgeFinding{Name: name, Passed: false, Reason: reason}
+			case verdict == "FAIL":
+				verdicts[name] = JudgeFinding{Name: name, Passed: false, Reason: "no reason given"}
+			}
 		}
 	}
 
 	findings := make([]JudgeFinding, len(criteria))
 	for i, c := range criteria {
-		if f, ok := verdicts[c.Name]; ok {
-			findings[i] = f
-		} else {
+		f, ok := verdicts[c.Name]
+		if !ok {
 			findings[i] = JudgeFinding{Name: c.Name, Passed: false, Reason: "judge did not return a verdict for this criterion"}
+			continue
 		}
+		// Apply a reasoning line only where the verdict line didn't
+		// already supply an explicit reason: PASS's Reason is always
+		// empty at this point, and a bare FAIL's Reason is always
+		// exactly "no reason given" — both are the "nothing explicit
+		// was given" markers this fills in.
+		if r, ok := reasoning[c.Name]; ok {
+			if f.Passed && f.Reason == "" {
+				f.Reason = r
+			} else if !f.Passed && f.Reason == "no reason given" {
+				f.Reason = r
+			}
+		}
+		findings[i] = f
 	}
 	return findings
 }

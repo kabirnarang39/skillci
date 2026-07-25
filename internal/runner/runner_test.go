@@ -1915,6 +1915,144 @@ func TestRunCaseJudgeUsesSeparateModelFromCaseModel(t *testing.T) {
 	}
 }
 
+// TestRunCaseJudgeReasoningCapturedForPassingCriterion covers the new
+// chain-of-thought prompt format: a PASS verdict's reasoning line is now
+// captured into JudgeFinding.Reason, where previously PASS always left
+// Reason empty.
+func TestRunCaseJudgeReasoningCapturedForPassingCriterion(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nHello, thanks for reaching out!",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE_REASONING: tone: The response uses a warm greeting and offers thanks, which reads as friendly.\nSKILLCI_JUDGE: tone = PASS",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is the response friendly?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if len(result.JudgeFindings) != 1 || !result.JudgeFindings[0].Passed {
+		t.Fatalf("JudgeFindings = %+v, want one passing finding", result.JudgeFindings)
+	}
+	want := "The response uses a warm greeting and offers thanks, which reads as friendly."
+	if result.JudgeFindings[0].Reason != want {
+		t.Errorf("Reason = %q, want %q", result.JudgeFindings[0].Reason, want)
+	}
+}
+
+// TestRunCaseJudgeReasoningOverridesGenericFailReason covers a bare
+// "FAIL" verdict (no inline ": reason") paired with a reasoning line —
+// the reasoning should replace the old generic "no reason given"
+// fallback, not sit alongside it.
+func TestRunCaseJudgeReasoningOverridesGenericFailReason(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nDo it yourself.",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE_REASONING: tone: The response is curt and offers no help, which reads as dismissive.\nSKILLCI_JUDGE: tone = FAIL",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is the response friendly?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if len(result.JudgeFindings) != 1 || result.JudgeFindings[0].Passed {
+		t.Fatalf("JudgeFindings = %+v, want one failing finding", result.JudgeFindings)
+	}
+	want := "The response is curt and offers no help, which reads as dismissive."
+	if result.JudgeFindings[0].Reason != want {
+		t.Errorf("Reason = %q, want %q (reasoning line should replace the generic fallback)", result.JudgeFindings[0].Reason, want)
+	}
+}
+
+// TestRunCaseJudgeExplicitFailReasonWinsOverReasoningLine covers the
+// precedence rule: an explicit "FAIL: <reason>" on the verdict line
+// itself always wins over a reasoning line, so a judge model that
+// supplies both never has its concise inline reason silently discarded.
+func TestRunCaseJudgeExplicitFailReasonWinsOverReasoningLine(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nDo it yourself.",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE_REASONING: tone: A long explanation that should not win.\nSKILLCI_JUDGE: tone = FAIL: dismissive",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is the response friendly?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.JudgeFindings[0].Reason != "dismissive" {
+		t.Errorf("Reason = %q, want %q — explicit inline FAIL reason must win over a reasoning line", result.JudgeFindings[0].Reason, "dismissive")
+	}
+}
+
+// TestRunCaseJudgeMissingReasoningLineStillParsesVerdict is the
+// regression guard proving this change is backward compatible: a judge
+// response with NO reasoning line at all (the format every existing
+// judge test already uses) must parse exactly as before.
+func TestRunCaseJudgeMissingReasoningLineStillParsesVerdict(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nHello!",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = PASS",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.JudgeFindings[0].Passed || result.JudgeFindings[0].Reason != "" {
+		t.Errorf("JudgeFindings[0] = %+v, want Passed=true Reason=\"\" (unchanged from pre-reasoning behavior)", result.JudgeFindings[0])
+	}
+}
+
 func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
 	// The trigger assertion passes; only a budget assertion (max_tokens_loaded)
 	// fails. flake_retries is set, but must have no effect — budget
