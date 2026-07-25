@@ -704,6 +704,14 @@ Requires the `skillci` binary on your `PATH` (same install as above); no
 [editors/vscode/README.md](editors/vscode/README.md) for settings and
 development instructions.
 
+**Publishing** (maintainers): [`.github/workflows/vscode-release.yml`](.github/workflows/vscode-release.yml)
+publishes to the VS Code Marketplace and Open VSX on a `vscode/v*` tag
+(e.g. `vscode/v0.1.0`) — a separate tag namespace from the CLI's own `v*`
+release tags, since the extension versions independently. Requires a
+`VSCE_PAT` repo secret (Marketplace) and, optionally, `OVSX_PAT` (Open
+VSX; best-effort, won't fail the release if missing) before the first tag
+push will actually publish anything.
+
 ## Commands
 
 | Command | What it does |

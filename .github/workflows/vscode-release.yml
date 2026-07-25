@@ -1,0 +1,42 @@
+# .github/workflows/vscode-release.yml
+#
+# Publishes the VS Code extension (editors/vscode/) to the VS Code
+# Marketplace and Open VSX. Deliberately a separate tag namespace from
+# the CLI's own release.yml (which triggers on plain "v*"): the extension
+# versions independently from the CLI (0.1.0 vs the CLI's own tags), and
+# a tag containing "/" like "vscode/v0.1.0" cannot match release.yml's
+# "v*" glob (Actions tag globs don't let "*" cross a "/"), so pushing an
+# extension release tag can never accidentally also trigger a CLI
+# release, or vice versa.
+name: vscode-release
+on:
+  push:
+    tags:
+      - "vscode/v*"
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      - run: npm run compile
+      - run: npm run package
+      - name: Publish to VS Code Marketplace
+        run: npx vsce publish --pat "$VSCE_PAT" --packagePath skillci-*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      - name: Publish to Open VSX
+        # Best-effort: Open VSX is a nice-to-have second registry, not the
+        # primary distribution channel — a missing/invalid OVSX_PAT
+        # should warn, never fail this workflow (the Marketplace publish
+        # above already succeeded by this point).
+        continue-on-error: true
+        run: npx --yes ovsx publish skillci-*.vsix -p "$OVSX_PAT"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
