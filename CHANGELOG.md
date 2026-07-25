@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.2] — 2026-07-25
+
+### Added
+- VS Code extension marketplace icon (`editors/vscode/icon.png`).
+- README: shell completion setup (bash/zsh/fish) and a Windows install
+  path via Scoop.
+- Windows builds (amd64/arm64) and a self-hosted Scoop bucket
+  (`bucket/`), published on release alongside the existing Homebrew tap.
+
+### Fixed
+- Another leftover work email in `.goreleaser.yml`'s Homebrew cask
+  commit author, missed in the earlier email cleanup.
+
 ## [v0.3.1] — 2026-07-25
 
 ### Added
