@@ -5,7 +5,16 @@ on:
   pull_request:
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # go.mod pins go 1.25.3 as the toolchain minimum, so there's no
+        # viable second Go version to add here — the matrix dimension that
+        # actually catches real drift for this project is OS, not Go
+        # version (gitutil already special-cases macOS symlink resolution,
+        # and the frontmatter/path lint rules care about path separators).
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -13,5 +22,8 @@ jobs:
           go-version: "1.25"
       - run: gofmt -l . | tee /tmp/gofmt.out && test ! -s /tmp/gofmt.out
       - run: go vet ./...
-      - run: go test ./...
+      - run: go test -race ./...
       - run: go run ./cmd/skillci check examples/example-skill
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.12.2
