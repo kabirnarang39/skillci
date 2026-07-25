@@ -940,3 +940,113 @@ func TestRunMatrixJudgeSkippedWhenFlakeRetriesFiredMakesNoJudgeCall(t *testing.T
 		t.Errorf("JudgeFindings = %v, want nil", report.Outcomes[0].Result.JudgeFindings)
 	}
 }
+
+// modelAwareStub responds differently per model name found in each
+// request's JSON body — every other stub in this file replies identically
+// regardless of which model the case is being evaluated against, which
+// can't exercise cfg.Models having more than one entry produce genuinely
+// different per-model outcomes in the same RunMatrix call. responses maps
+// a substring of the request's "model" field to the literal response text
+// to return for that model.
+func modelAwareStub(t *testing.T, responses map[string]string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Model string `json:"model"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Fatalf("stub: decoding request body: %v", err)
+		}
+		text, ok := responses[req.Model]
+		if !ok {
+			t.Fatalf("stub: no scripted response for model %q", req.Model)
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+}
+
+// TestRunMatrixAttributesRegressionToTheCorrectModelOnly closes a real,
+// previously untested gap: every other RunMatrix test in this file
+// configures exactly one model. cfg.Models having 2+ entries is the core
+// "regression matrix" positioning — RunMatrix's own model loop (`for _,
+// model := range cfg.Models`) had never actually been driven with more
+// than one iteration. Two models are configured; history records both as
+// previously passing; this run's stub makes model-a keep passing and
+// model-b regress. A bug here would plausibly look like "the first
+// model's result leaks into the second" (e.g. reusing lastRun.Result
+// incorrectly, or IsNewRegression computed once instead of per-model) —
+// exactly the class of bug a single-model test can never see.
+func TestRunMatrixAttributesRegressionToTheCorrectModelOnly(t *testing.T) {
+	srv := modelAwareStub(t, map[string]string{
+		"model-a": "SKILLCI_TRIGGERED: true",
+		"model-b": "SKILLCI_TRIGGERED: false",
+	})
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{Name: "c1", Prompt: "review this", Assert: evalspec.Assertions{Triggered: truePtr()}},
+	}
+	hist := history.History{}
+	hist.Append(history.Run{Cases: []history.CaseResult{
+		{Name: "c1", Model: "model-a", Passed: true},
+		{Name: "c1", Model: "model-b", Passed: true},
+	}})
+	cfg := config.Config{Models: []string{"model-a", "model-b"}, FailOn: "regression"}
+
+	report, newRun, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, hist)
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.Outcomes) != 2 {
+		t.Fatalf("Outcomes = %+v, want 2 (one per model)", report.Outcomes)
+	}
+
+	var outcomeA, outcomeB *Outcome
+	for i := range report.Outcomes {
+		switch report.Outcomes[i].Model {
+		case "model-a":
+			outcomeA = &report.Outcomes[i]
+		case "model-b":
+			outcomeB = &report.Outcomes[i]
+		}
+	}
+	if outcomeA == nil || outcomeB == nil {
+		t.Fatalf("Outcomes = %+v, want one outcome each for model-a and model-b", report.Outcomes)
+	}
+
+	if !outcomeA.Result.Passed || outcomeA.IsNewRegression {
+		t.Errorf("model-a outcome = %+v, want Passed=true, IsNewRegression=false", outcomeA)
+	}
+	if outcomeB.Result.Passed || !outcomeB.IsNewRegression {
+		t.Errorf("model-b outcome = %+v, want Passed=false, IsNewRegression=true", outcomeB)
+	}
+
+	if !report.ShouldFailCI("regression") {
+		t.Error("ShouldFailCI(regression) = false, want true — model-b alone regressed")
+	}
+
+	if len(newRun.Cases) != 2 {
+		t.Fatalf("newRun.Cases = %+v, want 2 (one per model), so history.json records both independently", newRun.Cases)
+	}
+	for _, c := range newRun.Cases {
+		switch c.Model {
+		case "model-a":
+			if !c.Passed {
+				t.Error("newRun.Cases model-a Passed = false, want true")
+			}
+		case "model-b":
+			if c.Passed {
+				t.Error("newRun.Cases model-b Passed = true, want false")
+			}
+		default:
+			t.Errorf("newRun.Cases has unexpected model %q", c.Model)
+		}
+	}
+}
