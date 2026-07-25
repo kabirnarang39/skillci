@@ -1,0 +1,11 @@
+name: "example-judge"
+prompt: "I renamed the getUserData function to fetchUserProfile across the codebase, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+  judge:
+    - name: "imperative-mood"
+      criterion: "The changelog summary is written in the imperative mood (e.g. 'rename' not 'renamed')."
+    - name: "under-twelve-words"
+      criterion: "The changelog summary is under twelve words."
+  judge_strict: true

@@ -1,0 +1,7 @@
+name: "example-fuzz-llm"
+prompt: "I optimized the database query for the dashboard, write a changelog entry."
+skill_under_test: "example-skill"
+assert:
+  triggered: true
+  fuzz: true
+  fuzz_llm: true
