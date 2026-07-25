@@ -32,6 +32,19 @@ from a terminal.
 - Issues found in a file the skill *references* (not just `SKILL.md`
   itself) appear on that file too
 
+## How lint-on-type actually works
+
+`skillci check` is a separate process that always reads `SKILL.md` from
+disk — it has no notion of an unsaved editor buffer. To make
+`skillci.lintOnType` genuinely reflect what you've typed (not just
+re-check the same unchanged on-disk file on a timer), each debounced edit
+writes your current buffer to a scratch temp directory — with the skill's
+other files (`scripts/`, `references/`, `assets/`) symlinked in alongside
+it so referenced-file checks still resolve correctly — and lints that
+instead. Diagnostics are remapped back onto your real files before being
+shown, so clicking one still takes you to the file you actually have
+open. The temp directory is cleaned up when you close the `SKILL.md` tab.
+
 ## Development
 
 ```bash

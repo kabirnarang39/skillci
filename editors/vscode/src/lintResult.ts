@@ -48,6 +48,28 @@ export function parseIssues(stdout: string): ParsedIssue[] {
   }));
 }
 
+// remapIssuePaths rewrites any issue whose file path lives under tempDir
+// back to the equivalent path under realDir — used by lint-on-type's
+// buffer-mirror mode, where skillci was run against a scratch temp
+// directory (so it sees the live unsaved buffer content for SKILL.md, via
+// symlinks for everything else) but diagnostics must land on the real
+// files the user actually has open on disk, not the scratch mirror they
+// never asked to see. An issue whose path isn't under tempDir at all
+// (shouldn't happen given how the caller invokes skillci, but not
+// guaranteed by the JSON contract) passes through unchanged rather than
+// being dropped.
+export function remapIssuePaths(issues: ParsedIssue[], tempDir: string, realDir: string): ParsedIssue[] {
+  return issues.map((issue) => {
+    if (issue.file === tempDir) {
+      return { ...issue, file: realDir };
+    }
+    if (issue.file.startsWith(tempDir + "/") || issue.file.startsWith(tempDir + "\\")) {
+      return { ...issue, file: realDir + issue.file.slice(tempDir.length) };
+    }
+    return issue;
+  });
+}
+
 // groupByFile splits a flat issue list by absolute file path, since a
 // single `skillci check` invocation can report issues against more than
 // one file (SKILL.md itself, plus any referenced file its content-scan

@@ -71,6 +71,16 @@ and this project follows [Semantic Versioning](https://semver.org/).
   short-circuits on the first mismatched byte and turns request latency
   into a side channel an attacker could use to recover a valid token
   byte-by-byte rather than having to guess it whole.
+- VS Code extension: `skillci.lintOnType` re-linted on every debounced
+  edit as advertised, but skillci always reads `SKILL.md` from disk —
+  an unsaved keystroke was invisible to it until the file was actually
+  saved, so "live linting as you type" silently only ever reflected
+  whatever was last saved. Each debounced edit now mirrors the live
+  buffer into a scratch temp directory (with the skill's other files
+  symlinked in so referenced-file checks still resolve) and lints that,
+  remapping diagnostics back onto the real files. Caught while directly
+  answering whether the extension had actually been tested thoroughly —
+  it hadn't, for this specific path.
 - The Anthropic API client now retries a transient failure (429 rate
   limit, 500/502/503, or Anthropic's 529 "overloaded") up to 3 times with
   backoff instead of failing immediately. Previously a single flaky

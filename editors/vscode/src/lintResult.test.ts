@@ -4,7 +4,7 @@
 // here, so these run outside the extension host entirely.
 import { test } from "node:test";
 import * as assert from "node:assert/strict";
-import { parseIssues, severityForRule, groupByFile } from "./lintResult";
+import { parseIssues, severityForRule, groupByFile, remapIssuePaths } from "./lintResult";
 
 test("parseIssues returns empty array for empty stdout", () => {
   assert.deepEqual(parseIssues(""), []);
@@ -72,4 +72,36 @@ test("groupByFile splits issues by their file field", () => {
 
 test("groupByFile returns an empty map for an empty issue list", () => {
   assert.equal(groupByFile([]).size, 0);
+});
+
+test("remapIssuePaths rewrites the temp SKILL.md path back to the real one", () => {
+  const issues = parseIssues(
+    JSON.stringify([{ file: "/tmp/mirror/SKILL.md", line: 4, rule: "ast01-pipe-to-shell", msg: "m" }]),
+  );
+  const remapped = remapIssuePaths(issues, "/tmp/mirror", "/real/skill");
+  assert.equal(remapped[0].file, "/real/skill/SKILL.md");
+  assert.equal(remapped[0].line, 4);
+  assert.equal(remapped[0].rule, "ast01-pipe-to-shell");
+});
+
+test("remapIssuePaths rewrites a referenced file's path under a nested directory", () => {
+  const issues = parseIssues(
+    JSON.stringify([{ file: "/tmp/mirror/scripts/install.sh", line: 2, rule: "ast01-pipe-to-shell", msg: "m" }]),
+  );
+  const remapped = remapIssuePaths(issues, "/tmp/mirror", "/real/skill");
+  assert.equal(remapped[0].file, "/real/skill/scripts/install.sh");
+});
+
+test("remapIssuePaths leaves a path outside tempDir unchanged", () => {
+  const issues = parseIssues(JSON.stringify([{ file: "/somewhere/else/SKILL.md", line: 1, rule: "r", msg: "m" }]));
+  const remapped = remapIssuePaths(issues, "/tmp/mirror", "/real/skill");
+  assert.equal(remapped[0].file, "/somewhere/else/SKILL.md");
+});
+
+test("remapIssuePaths does not false-positive on a tempDir-prefixed sibling path", () => {
+  // /tmp/mirror-extra/SKILL.md merely starts with the string "/tmp/mirror"
+  // but is NOT actually inside it — must not be remapped as if it were.
+  const issues = parseIssues(JSON.stringify([{ file: "/tmp/mirror-extra/SKILL.md", line: 1, rule: "r", msg: "m" }]));
+  const remapped = remapIssuePaths(issues, "/tmp/mirror", "/real/skill");
+  assert.equal(remapped[0].file, "/tmp/mirror-extra/SKILL.md");
 });
