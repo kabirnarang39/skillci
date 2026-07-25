@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func requireTestStore(t *testing.T) *Store {
@@ -190,5 +193,73 @@ func TestIngestHandlerStoresDimensionEntries(t *testing.T) {
 	}
 	if len(rows) != 2 {
 		t.Fatalf("LatestDimensionResults() = %v, want 2 rows (segment and language)", rows)
+	}
+}
+
+// TestIngestHandlerConcurrentRequestsAllSucceed fires real concurrent HTTP
+// requests at the handler (via a real net/http server, not
+// httptest.NewRecorder — that's single-goroutine by construction and would
+// never exercise the handler running on genuinely parallel goroutines the
+// way a real deployment does). Previously untested: nothing in this
+// package had ever run more than one request through the handler at once.
+// Every request uses a distinct commit SHA so a lost or corrupted write is
+// individually detectable, not just a row-count mismatch.
+func TestIngestHandlerConcurrentRequestsAllSucceed(t *testing.T) {
+	store := requireTestStore(t)
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	const n = 50
+	skill := fmt.Sprintf("concurrent-skill-%d", time.Now().UnixNano())
+
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := range n {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			payload := IngestPayload{
+				Owner: "concurrent-owner", Repo: "concurrent-repo", Skill: skill,
+				CommitSHA: fmt.Sprintf("sha-%d", i), Model: "claude-sonnet-5", Passed: true,
+			}
+			body, _ := json.Marshal(payload)
+			req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/v1/results", bytes.NewReader(body))
+			if err != nil {
+				errs <- err
+				return
+			}
+			req.Header.Set("Authorization", "Bearer secret-token")
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusCreated {
+				errs <- fmt.Errorf("request %d: status = %d, want 201", i, resp.StatusCode)
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+
+	rows, err := store.SkillHistory(context.Background(), "concurrent-owner", "concurrent-repo", skill)
+	if err != nil {
+		t.Fatalf("SkillHistory() error = %v", err)
+	}
+	if len(rows) != n {
+		t.Errorf("SkillHistory() = %d rows, want %d — a concurrent write was lost or corrupted", len(rows), n)
+	}
+	seen := make(map[string]bool, n)
+	for _, r := range rows {
+		if seen[r.CommitSHA] {
+			t.Errorf("duplicate commit_sha %q in results — a row was written twice", r.CommitSHA)
+		}
+		seen[r.CommitSHA] = true
 	}
 }
