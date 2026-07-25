@@ -197,6 +197,8 @@ What actually fails CI is controlled by `fail_on` in `.skillci.yaml` — three v
 
 A `strict_dimensions` match (see below) always fails CI regardless of which `fail_on` policy is set.
 
+> **Heads up if you're new here:** under the default `regression` policy, a *brand-new* eval case that fails on its very first run will NOT fail CI — there's no prior passing run to regress from, so it's proposed as a generated case instead (see below) rather than blocking the build. If you just added a case and expected red CI, check for a `proposed new eval case` line in the output before assuming something's broken. Switch to `any_fail` if you want every failure, including a brand-new case's, to gate CI from day one.
+
 An eval case (`evals/*.yaml`) looks like this:
 
 ```yaml
