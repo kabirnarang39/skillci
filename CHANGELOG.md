@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.4.0] — 2026-07-26
+
 ### Added
 - `redteam:`/`redteam_strict:` assertion: adversarial attack plugins
   (`prompt-injection-canary`, `instruction-leakage`, both deterministic
@@ -15,6 +17,23 @@ and this project follows [Semantic Versioning](https://semver.org/).
   judge model). A successful attack self-grows into a permanent
   regression case via the existing self-growing eval loop, with no
   redteam-specific code needed for that path.
+- `examples/example-skill/evals/redteam.yaml`: a runnable example
+  exercising all 4 redteam plugins together.
+
+### Fixed
+- `redteam:` attacks were silently skipped whenever `flake_retries` was
+  also set and the first attempt's flake vote resolved to
+  `confirmed_pass` — a copy-pasted guard clause meant for `judge:` (which
+  reuses attempt 1's response) incorrectly also gated `redteam`, which
+  always makes its own independent attack call. Could silently report a
+  clean pass with zero attacks actually run.
+- A self-grown redteam regression case's failure-context header showed
+  the benign base response instead of what the attack actually leaked or
+  complied with — reviewable now, not just re-runnable.
+- `instruction-leakage`'s detection is narrower than its name implies (it
+  only catches verbatim leakage of the skill's own `name` + `description`
+  frontmatter fields, not paraphrased leaks) — now documented explicitly
+  rather than implied to be more general.
 
 ## [v0.3.3] — 2026-07-26
 
