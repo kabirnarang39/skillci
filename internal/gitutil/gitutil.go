@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -101,6 +102,49 @@ func WorktreeAdd(dir, sha string) (string, func() error, error) {
 		return err
 	}
 	return worktreePath, cleanup, nil
+}
+
+// PruneStaleBisectWorktrees removes any worktree registered against dir's
+// repository whose path lives under the OS temp directory with WorktreeAdd's
+// "skillci-bisect-*" naming pattern — i.e. one WorktreeAdd created that was
+// never cleaned up, because the process that owned it was killed before its
+// deferred cleanup could run (SIGKILL always, and SIGINT/SIGTERM too since
+// nothing installs a handler for them). Without this, every interrupted
+// bisect run leaks a full historical checkout on disk forever: the
+// directory is real, so `git worktree prune` — which only clears entries
+// whose directory is already gone — won't touch it either.
+//
+// Only paths matching skillci's own naming pattern are ever removed; a
+// worktree the user (or anything else) created by hand is left alone.
+// Safe to call at the start of every bisect run.
+func PruneStaleBisectWorktrees(dir string) error {
+	out, err := runGit(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		return err
+	}
+
+	tmpDir := os.TempDir()
+	// git reports worktree paths resolved (symlink-free); os.TempDir() on
+	// macOS is often under a symlinked prefix (/var -> /private/var), so
+	// without resolving the same way here, the prefix match below would
+	// silently never fire — no error, the sweep would just quietly do
+	// nothing, same class of bug documented where this repo already hit
+	// it once for RepoRoot.
+	if resolved, err := filepath.EvalSymlinks(tmpDir); err == nil {
+		tmpDir = resolved
+	}
+	tmpPrefix := filepath.Join(tmpDir, "skillci-bisect-")
+
+	for _, line := range strings.Split(out, "\n") {
+		path, ok := strings.CutPrefix(line, "worktree ")
+		if !ok || !strings.HasPrefix(path, tmpPrefix) {
+			continue
+		}
+		if _, err := runGit(dir, "worktree", "remove", "--force", path); err != nil {
+			return fmt.Errorf("pruning stale bisect worktree %s: %w", path, err)
+		}
+	}
+	return nil
 }
 
 // DiffFiles returns the diff of paths between shaA and shaB.

@@ -16,6 +16,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   (CWE-918). The guard validates the resolved IP at actual dial time (for
   the initial request and any redirect), closing the DNS-rebinding gap a
   separate check-then-dial step would leave open.
+- `skillci bisect`: a run killed before its deferred cleanup could run
+  (SIGKILL, or an unhandled SIGINT/SIGTERM from a CI job timeout) used to
+  leak its temporary `git worktree` — both the checked-out directory and
+  git's own worktree registration — forever, since a directory that still
+  exists on disk is invisible to `git worktree prune`. Every `bisect` run
+  now sweeps and removes any orphaned worktree from a prior interrupted
+  run before starting.
 
 ## [v0.2.0] — 2026-07-24
 

@@ -186,6 +186,57 @@ func TestWorktreeAddChecksOutHistoricalContentAndCleansUp(t *testing.T) {
 	}
 }
 
+// TestPruneStaleBisectWorktreesRemovesOrphanedWorktree simulates a bisect
+// run that was killed before its deferred cleanup could run (SIGKILL, or
+// an unhandled SIGINT/SIGTERM from a CI job timeout — Go runs no defers on
+// either): WorktreeAdd's directory and git's own worktree registration
+// both survive, forever, unless something notices and removes them.
+func TestPruneStaleBisectWorktreesRemovesOrphanedWorktree(t *testing.T) {
+	dir := initRepo(t)
+	sha := commitFile(t, dir, "a.txt", "v1", "initial")
+
+	worktreePath, _, err := WorktreeAdd(dir, sha)
+	if err != nil {
+		t.Fatalf("WorktreeAdd() error = %v", err)
+	}
+	// Deliberately skip cleanup() — this is the orphan PruneStaleBisectWorktrees must find.
+
+	if err := PruneStaleBisectWorktrees(dir); err != nil {
+		t.Fatalf("PruneStaleBisectWorktrees() error = %v", err)
+	}
+
+	if _, err := os.Stat(worktreePath); !os.IsNotExist(err) {
+		t.Errorf("orphaned worktree directory %s still exists after prune", worktreePath)
+	}
+	out, err := runGit(dir, "worktree", "list", "--porcelain")
+	if err != nil {
+		t.Fatalf("worktree list: %v", err)
+	}
+	if strings.Contains(out, worktreePath) {
+		t.Errorf("git still has the orphaned worktree registered: %s", out)
+	}
+}
+
+// TestPruneStaleBisectWorktreesLeavesUnrelatedWorktreesAlone proves the
+// sweep only ever touches paths matching skillci's own bisect temp-dir
+// naming pattern — never a worktree the user (or anything else) created by
+// hand elsewhere.
+func TestPruneStaleBisectWorktreesLeavesUnrelatedWorktreesAlone(t *testing.T) {
+	dir := initRepo(t)
+	sha := commitFile(t, dir, "a.txt", "v1", "initial")
+
+	userWorktree := filepath.Join(t.TempDir(), "not-a-skillci-worktree")
+	runGitT(t, dir, "worktree", "add", "--detach", userWorktree, sha)
+
+	if err := PruneStaleBisectWorktrees(dir); err != nil {
+		t.Fatalf("PruneStaleBisectWorktrees() error = %v", err)
+	}
+
+	if _, err := os.Stat(userWorktree); err != nil {
+		t.Errorf("unrelated worktree %s was removed by the sweep: %v", userWorktree, err)
+	}
+}
+
 func TestDiffFilesShowsChange(t *testing.T) {
 	dir := initRepo(t)
 	sha1 := commitFile(t, dir, "SKILL.md", "old content", "v1")

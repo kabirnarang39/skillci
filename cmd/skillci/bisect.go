@@ -93,6 +93,13 @@ func runBisect(out io.Writer, caseName, path, model, good, bad string) error {
 		return err
 	}
 
+	// A prior bisect run killed mid-flight (Ctrl-C, or a CI job timeout)
+	// never runs its deferred worktree cleanup, leaking a full historical
+	// checkout on disk forever. Sweep those up before starting a new one.
+	if err := gitutil.PruneStaleBisectWorktrees(absPath); err != nil {
+		fmt.Fprintf(out, "warning: failed to prune stale bisect worktrees: %v\n", err)
+	}
+
 	goodSHA, badSHA := good, bad
 	historyPath := filepath.Join(path, ".skillci", "history.json")
 	hist, err := history.Load(historyPath)
