@@ -104,6 +104,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   with a local stub server: a normal `regress` failure — the single most
   common outcome the tool exists to report in CI — was dumping a full
   wall of flag help on every failing build.
+- Every command was printing its own error message twice: Cobra's default
+  behavior prints `Error: <err>` itself on any RunE/parse error, and
+  main() separately printed the same error again before exiting. Caught
+  via live testing — a real `check` run against a mismatched pinned
+  source showed both `Error: 1 lint issue(s) found` and a bare repeat of
+  the same text. Root command now sets `SilenceErrors: true`, leaving
+  main()'s own print as the single source of truth.
 
 ## [v0.2.0] — 2026-07-24
 

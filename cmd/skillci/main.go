@@ -18,6 +18,11 @@ func newRootCmd() *cobra.Command {
 		Use:     "skillci",
 		Short:   "Lint, eval, and regression-test Claude Skills",
 		Version: version,
+		// Cobra's default is to print "Error: <err>" itself on any
+		// RunE/parse error, in addition to main's own os.Exit(1) path
+		// below printing the same error again — every failing command
+		// was double-printing its error message.
+		SilenceErrors: true,
 	}
 	root.AddCommand(newInitCmd())
 	root.AddCommand(newCheckCmd())

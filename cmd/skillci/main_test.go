@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +19,39 @@ func TestNewRootCmdRegistersEverySubcommand(t *testing.T) {
 		if cmd, _, err := root.Find([]string{name}); err != nil || cmd.Name() != name {
 			t.Errorf("subcommand %q not registered on root (err = %v)", name, err)
 		}
+	}
+}
+
+// TestNewRootCmdSilencesErrors covers the field that actually fixes the
+// double-print: Cobra's default behavior is to print "Error: <err>"
+// itself on any RunE/parse error, in addition to main's own
+// fmt.Fprintln(os.Stderr, err) — every failing command was printing its
+// error message twice (once as "Error: X" from Cobra, once bare from
+// main). Caught live: running the real compiled binary against a
+// deliberately failing case showed both lines.
+func TestNewRootCmdSilencesErrors(t *testing.T) {
+	if !newRootCmd().SilenceErrors {
+		t.Error("SilenceErrors = false, want true — Cobra would print its own \"Error: ...\" line in addition to main's, duplicating every error message")
+	}
+}
+
+// TestMainDoesNotDoublePrintErrors is the real end-to-end proof, not just
+// a field assertion: builds and runs the actual binary against a
+// guaranteed parse error (an unrecognized flag) and checks the error text
+// appears in the output exactly once.
+func TestMainDoesNotDoublePrintErrors(t *testing.T) {
+	bin := t.TempDir() + "/skillci-test-bin"
+	build := exec.Command("go", "build", "-o", bin, ".")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build error = %v: %s", err, out)
+	}
+
+	cmd := exec.Command(bin, "regress", "--no-such-flag")
+	out, _ := cmd.CombinedOutput()
+	got := string(out)
+	count := strings.Count(got, "unknown flag")
+	if count != 1 {
+		t.Errorf("output = %q, want \"unknown flag\" to appear exactly once, got %d times", got, count)
 	}
 }
 
