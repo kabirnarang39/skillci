@@ -19,6 +19,18 @@ type Issue struct {
 	Msg  string `json:"msg"`
 }
 
+// shiftIssueLines adds offset to every issue's Line field in place and
+// returns issues — used by LintSkill to convert a scanner's body-relative
+// line numbers (every scanner in this package numbers lines relative to
+// whatever text it was directly given, with no knowledge of a preceding
+// frontmatter block) into real SKILL.md file line numbers.
+func shiftIssueLines(issues []Issue, offset int) []Issue {
+	for i := range issues {
+		issues[i].Line += offset
+	}
+	return issues
+}
+
 type frontmatter struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
@@ -137,6 +149,16 @@ func LintSkill(dir string) ([]Issue, error) {
 
 	issues = append(issues, scanFrontmatterSecurity(skillPath, fm)...)
 
+	// Every scanner below computes line numbers relative to body (the
+	// text after splitFrontmatter strips the frontmatter block) — correct
+	// for scanReferencedFileContent, where the content given really is a
+	// whole standalone file, but wrong here: body's own line 1 is real
+	// file line 1+bodyLineOffset, not real file line 1. Without this
+	// shift, every diagnostic from these rules lands on the wrong line —
+	// confirmed against a real editor (VS Code's Problems panel) during
+	// this session, not just a theoretical off-by-N.
+	bodyLineOffset := 3 + strings.Count(fm, "\n") // opening "---" + fm's own lines + closing "---"
+
 	var referencedMatches []string
 	for _, loc := range referencedFileRe.FindAllStringIndex(body, -1) {
 		rawMatch := body[loc[0]:loc[1]]
@@ -147,7 +169,7 @@ func LintSkill(dir string) ([]Issue, error) {
 		referencedMatches = append(referencedMatches, match)
 		refPath := filepath.Join(dir, match)
 		matchIdx := strings.Index(body, match)
-		lineNum := strings.Count(body[:matchIdx], "\n") + 1
+		lineNum := strings.Count(body[:matchIdx], "\n") + 1 + bodyLineOffset
 		if _, err := os.Stat(refPath); os.IsNotExist(err) {
 			issues = append(issues, Issue{File: skillPath, Line: lineNum, Rule: "missing-referenced-file", Msg: fmt.Sprintf("referenced file %s does not exist", match)})
 		}
@@ -164,16 +186,16 @@ func LintSkill(dir string) ([]Issue, error) {
 		}
 	}
 
-	issues = append(issues, scanForSecrets(skillPath, body)...)
-	issues = append(issues, scanTextForAST01(skillPath, body)...)
-	issues = append(issues, scanTextForAST02(skillPath, body)...)
-	issues = append(issues, scanTextForAST03(skillPath, body)...)
-	issues = append(issues, scanTextForAST05(skillPath, body)...)
+	issues = append(issues, shiftIssueLines(scanForSecrets(skillPath, body), bodyLineOffset)...)
+	issues = append(issues, shiftIssueLines(scanTextForAST01(skillPath, body), bodyLineOffset)...)
+	issues = append(issues, shiftIssueLines(scanTextForAST02(skillPath, body), bodyLineOffset)...)
+	issues = append(issues, shiftIssueLines(scanTextForAST03(skillPath, body), bodyLineOffset)...)
+	issues = append(issues, shiftIssueLines(scanTextForAST05(skillPath, body), bodyLineOffset)...)
 
 	if iss := bloatBodyLengthIssue(skillPath, body); iss != nil {
 		issues = append(issues, *iss)
 	}
-	issues = append(issues, bloatDuplicateLineIssues(skillPath, body)...)
+	issues = append(issues, shiftIssueLines(bloatDuplicateLineIssues(skillPath, body), bodyLineOffset)...)
 	if iss := bloatReferencedFileCountIssue(skillPath, referencedMatches); iss != nil {
 		issues = append(issues, *iss)
 	}

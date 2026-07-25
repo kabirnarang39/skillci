@@ -29,6 +29,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
   tree before `--open-pr` ran (e.g. a developer's own in-progress work)
   would otherwise be swept into the commit, pushed to a throwaway branch,
   and included in the pull request opened on GitHub.
+- `check`: every line number reported for a `SKILL.md` issue (AST01/02/03/05
+  findings, committed-secret detection, duplicate-line bloat warnings, and
+  a referenced file's missing/traversal/case-mismatch/portability issues)
+  was computed relative to the body text *after* the frontmatter block,
+  not the real file — so it always pointed several lines above the actual
+  offending line, by however many lines the frontmatter itself occupied.
+  Caught live via the new VS Code extension's Problems panel, which
+  visibly anchored diagnostics on the wrong line; the CLI's own
+  `file:line:` text output had the identical bug.
 
 ## [v0.2.0] — 2026-07-24
 
