@@ -3,5 +3,6 @@
 .skillci/*
 !.skillci/badge.svg
 .env
+.DS_Store
 .claude/
 docs/superpowers/
