@@ -7,6 +7,44 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.4.1] — 2026-07-26
+
+### Added
+- `examples/example-skill/evals/judge.yaml` and `fuzz-llm.yaml`: the two
+  shipped assertion types (`judge:`, `fuzz_llm:`) that had no runnable
+  example, unlike every other feature.
+- Tests proving two previously-untested real code paths: `RunMatrix`
+  attributing pass/fail correctly per model when `cfg.Models` has 2+
+  entries (every prior test used exactly one model), and `bisect`'s
+  first-ever-run error message (no `history.json` yet, no `--good`
+  flag) actually naming `--good` and the case instead of failing several
+  steps later with a confusing downstream error.
+- `.golangci.yml`. `golangci-lint` had never been run against this repo;
+  its default output caps were hiding most of what it actually found.
+  Fixed the real findings (a De Morgan's simplification, a handful of
+  named `defer Close()` sites) and excluded two extremely common, safe
+  Go patterns via config instead of ~150 individual `//nolint` comments:
+  CLI stdout writes (`fmt.Fprint*`) and test-fixture encode/decode/
+  cleanup code. Also excludes `SA5011` in test files specifically —
+  verified by hand that every instance is the standard `if x == nil {
+  t.Fatal() }` false positive (staticcheck doesn't model `t.Fatal` as
+  terminal).
+
+### Fixed
+- Dashboard pages pulled Google Fonts via an external `@import` on every
+  page load — a real outbound network call from a tool positioned as
+  self-hosted. Switched to a system font stack.
+
+### Changed
+- CI: added `-race` to the test run, an `ubuntu-latest`/`macos-latest`
+  matrix (go.mod pins a single Go version, so no version matrix makes
+  sense — OS is the dimension that actually catches drift here), and a
+  `golangci-lint` step.
+- README: called out that a brand-new failing eval case does not fail CI
+  under the default `fail_on: regression` (no prior passing run to
+  regress from) — correct, documented behavior, but easy to miss and
+  easy to be surprised by on day one.
+
 ## [v0.4.0] — 2026-07-26
 
 ### Added

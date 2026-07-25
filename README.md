@@ -78,7 +78,7 @@ alongside to verify against.
 **Go install** (any platform with Go 1.25+):
 
 ```bash
-go install github.com/kabirnarang39/skillci/cmd/skillci@v0.4.0
+go install github.com/kabirnarang39/skillci/cmd/skillci@v0.4.1
 ```
 
 An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not for `check`, which is local-only and free).
@@ -627,16 +627,16 @@ though the rest of the suite is gated more loosely.
 ## GitHub Actions
 
 ```yaml
-- uses: kabirnarang39/skillci/.github/actions/skillci@v0.4.0
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.4.1
   with:
     path: path/to/your-skill
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-Pin the action itself to a release tag (`@v0.4.0` above), not `@main` —
+Pin the action itself to a release tag (`@v0.4.1` above), not `@main` —
 `@main` floats onto whatever the action definition looks like next,
 silently changing your CI's behavior with no version control. The
-`version` input (defaults to `v0.4.0`) pins which `skillci` CLI binary
+`version` input (defaults to `v0.4.1`) pins which `skillci` CLI binary
 gets installed, separately from the action reference; override it once a
 newer tag ships, or set it to `latest` if you deliberately want to float
 (not recommended for production — every consumer's CI would silently
@@ -650,7 +650,7 @@ updated on every subsequent push to that PR rather than piling up a new
 one each time:
 
 ```yaml
-- uses: kabirnarang39/skillci/.github/actions/skillci@v0.4.0
+- uses: kabirnarang39/skillci/.github/actions/skillci@v0.4.1
   with:
     path: path/to/your-skill
     anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
