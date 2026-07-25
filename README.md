@@ -63,10 +63,17 @@ brew trust kabirnarang39/skillci  # newer Homebrew requires explicitly trusting 
 brew install --cask skillci
 ```
 
-**Prebuilt binaries** (Linux/macOS, amd64/arm64): download from the
+**Scoop** (Windows):
+
+```powershell
+scoop bucket add skillci https://github.com/kabirnarang39/skillci
+scoop install skillci/skillci
+```
+
+**Prebuilt binaries** (Linux/macOS/Windows, amd64/arm64): download from the
 [latest release](https://github.com/kabirnarang39/skillci/releases/latest)
-— each is a plain `.tar.gz`, with a `checksums.txt` alongside to verify
-against.
+— Linux/macOS ship as `.tar.gz`, Windows as `.zip`, with a `checksums.txt`
+alongside to verify against.
 
 **Go install** (any platform with Go 1.25+):
 
