@@ -236,6 +236,53 @@ func TestRunCaseSnapshotChangedNonStrictStillPasses(t *testing.T) {
 	}
 }
 
+// TestRunCaseSnapshotRevertingToGoldenClearsStalePending covers a case
+// that drifted (leaving a pending snapshot change on disk) and then, on a
+// later run, went back to matching golden — e.g. the underlying model
+// behavior flip-flopped, or was fixed. The stale pending file from the
+// first run must not survive: left in place, a later `accept --model`
+// would promote it as the new golden baseline even though it no longer
+// reflects what the case actually produces.
+func TestRunCaseSnapshotRevertingToGoldenClearsStalePending(t *testing.T) {
+	dir := newSkillDir(t)
+	const golden = "Old leaves drift and fall."
+	if err := snapshot.Save(dir, "snap-case", "claude-sonnet-5", golden); err != nil {
+		t.Fatalf("seeding golden: %v", err)
+	}
+
+	driftedSrv := stubServer(t, "SKILLCI_TRIGGERED: true\nOld leaves drift and settle.", 100)
+	defer driftedSrv.Close()
+	driftedClient := anthropic.NewClient("test-key").WithBaseURL(driftedSrv.URL)
+
+	c := evalspec.Case{
+		Name:   "snap-case",
+		Prompt: "write a haiku",
+		Assert: evalspec.Assertions{Snapshot: truePtr()},
+	}
+
+	if _, err := RunCase(context.Background(), driftedClient, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+		t.Fatalf("RunCase() (drifted run) error = %v", err)
+	}
+	if _, ok, err := snapshot.LoadPending(dir, "snap-case", "claude-sonnet-5"); err != nil || !ok {
+		t.Fatalf("pending snapshot not saved after drifted run: ok=%v err=%v", ok, err)
+	}
+
+	revertedSrv := stubServer(t, "SKILLCI_TRIGGERED: true\n"+golden, 100)
+	defer revertedSrv.Close()
+	revertedClient := anthropic.NewClient("test-key").WithBaseURL(revertedSrv.URL)
+
+	result, err := RunCase(context.Background(), revertedClient, dir, "claude-sonnet-5", c, nil, "")
+	if err != nil {
+		t.Fatalf("RunCase() (reverted run) error = %v", err)
+	}
+	if result.SnapshotDiff != nil {
+		t.Errorf("SnapshotDiff = %+v, want nil — response matches golden again", result.SnapshotDiff)
+	}
+	if _, ok, err := snapshot.LoadPending(dir, "snap-case", "claude-sonnet-5"); err != nil || ok {
+		t.Errorf("pending snapshot still present after reverting to golden: ok=%v err=%v — it must be cleared, or a later `accept` would promote stale content", ok, err)
+	}
+}
+
 func TestRunCaseSnapshotChangedStrictFails(t *testing.T) {
 	dir := newSkillDir(t)
 	if err := snapshot.Save(dir, "snap-case", "claude-sonnet-5", "Old leaves drift and fall."); err != nil {

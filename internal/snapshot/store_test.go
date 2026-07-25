@@ -102,6 +102,26 @@ func TestPromotePendingMovesFileAndOverwritesGolden(t *testing.T) {
 	}
 }
 
+func TestClearPendingRemovesFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := SavePending(dir, "my-case", "claude-sonnet-5", "drifted response"); err != nil {
+		t.Fatalf("SavePending() error = %v", err)
+	}
+	if err := ClearPending(dir, "my-case", "claude-sonnet-5"); err != nil {
+		t.Fatalf("ClearPending() error = %v", err)
+	}
+	if _, ok, _ := LoadPending(dir, "my-case", "claude-sonnet-5"); ok {
+		t.Error("pending file should be removed after ClearPending")
+	}
+}
+
+func TestClearPendingNoErrorWhenNoPendingExists(t *testing.T) {
+	dir := t.TempDir()
+	if err := ClearPending(dir, "no-such-case", "claude-sonnet-5"); err != nil {
+		t.Errorf("ClearPending() error = %v, want nil — clearing an already-absent pending file isn't an error", err)
+	}
+}
+
 func TestPromotePendingErrorsWhenNoPendingExists(t *testing.T) {
 	dir := t.TempDir()
 	if err := PromotePending(dir, "no-such-case", "claude-sonnet-5"); err == nil {

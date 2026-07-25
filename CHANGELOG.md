@@ -38,6 +38,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   Caught live via the new VS Code extension's Problems panel, which
   visibly anchored diagnostics on the wrong line; the CLI's own
   `file:line:` text output had the identical bug.
+- A `snapshot`-enabled case that drifted, then later reverted back to
+  matching its golden baseline, left the earlier run's pending snapshot
+  change sitting on disk indefinitely. Left in place, `accept --model`
+  had no way to know it was stale and would promote it as the new golden
+  baseline even though it no longer reflected what the case actually
+  produces. A case going back to matching golden now clears any pending
+  change from an earlier drifted run.
 
 ## [v0.2.0] — 2026-07-24
 

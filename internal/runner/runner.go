@@ -180,6 +180,16 @@ If, given the user's message, you would invoke this skill, begin your response w
 				if c.Assert.SnapshotStrict != nil && *c.Assert.SnapshotStrict {
 					result.Failures = append(result.Failures, fmt.Sprintf("snapshot changed: %d word(s) differ from golden baseline", diff.WordsChanged))
 				}
+			} else {
+				// The response is back to matching golden. Without this, a
+				// pending file saved by an earlier drifted run would keep
+				// sitting on disk indefinitely — and a later `accept
+				// --model` would promote that stale content as the new
+				// golden baseline, even though it no longer reflects what
+				// the case actually produces.
+				if err := snapshot.ClearPending(skillDir, c.Name, model); err != nil {
+					return Result{}, err
+				}
 			}
 		}
 	}

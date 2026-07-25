@@ -43,6 +43,19 @@ func SavePending(skillDir, caseName, model, text string) error {
 	return writeCreatingParents(PendingPath(skillDir, caseName, model), text)
 }
 
+// ClearPending removes a pending snapshot change, if one exists — a no-op,
+// not an error, when there isn't one. Callers use this when a case's live
+// response goes back to matching its golden baseline after a prior run
+// left a pending change on disk: without clearing it, that stale pending
+// file keeps sitting there, and a later `accept --model` promotes it as
+// the new golden baseline even though it no longer reflects reality.
+func ClearPending(skillDir, caseName, model string) error {
+	if err := os.Remove(PendingPath(skillDir, caseName, model)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // PromotePending moves a pending snapshot change into the accepted golden
 // file, overwriting any existing golden baseline, and removes the pending
 // file. Errors if no pending file exists for this case+model.
