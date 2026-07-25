@@ -4,6 +4,7 @@
   "description": "Live security and bloat lint for Claude Skill SKILL.md files, using skillci check --format json",
   "version": "0.1.0",
   "publisher": "kabirnarang39",
+  "icon": "icon.png",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
