@@ -115,6 +115,36 @@ func TestSaveCreatesParentDirectory(t *testing.T) {
 	}
 }
 
+// TestSamplesReturnsIndependentCopy proves a caller mutating the slice
+// (or an element) returned by Samples() cannot reach back into the
+// Cache's own stored data — Samples() must hand back a copy, not an
+// alias of the entry's internal []Sample.
+func TestSamplesReturnsIndependentCopy(t *testing.T) {
+	var c Cache
+	c.Append("key1", Sample{Findings: []FindingRecord{{Name: "tone", Passed: true, Reason: "friendly"}}})
+
+	got, ok := c.Samples("key1")
+	if !ok {
+		t.Fatal("Samples() ok = false, want true")
+	}
+	// Reassigning an existing element indexes straight into whatever
+	// backing array got shares with the Cache — if Samples() ever starts
+	// returning its internal slice by alias again, this line is what
+	// would silently corrupt the cache's own stored data.
+	got[0] = Sample{Findings: []FindingRecord{{Name: "tone", Passed: false, Reason: "mutated"}}}
+
+	again, ok := c.Samples("key1")
+	if !ok {
+		t.Fatal("Samples() ok = false, want true")
+	}
+	if len(again) != 1 {
+		t.Fatalf("Samples() after mutating a previous result = %d entries, want still 1 — appending to the returned slice must not grow the cache's own data", len(again))
+	}
+	if again[0].Findings[0].Reason != "friendly" {
+		t.Errorf("Samples() Reason = %q, want %q — reassigning the returned slice's element must not mutate the cache's own data", again[0].Findings[0].Reason, "friendly")
+	}
+}
+
 func TestSaveToUnwritableDirectoryReturnsError(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("directory permissions don't block writes the same way on Windows")

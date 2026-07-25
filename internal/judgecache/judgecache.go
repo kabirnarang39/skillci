@@ -83,11 +83,18 @@ func Load(path string) (Cache, error) {
 }
 
 // Samples returns every verdict sample recorded so far for key, in the
-// order they were appended.
+// order they were appended. The returned slice is a copy — a caller
+// appending to it, or reassigning one of its elements, cannot reach back
+// into the Cache's own stored data (a shallow copy of the []Sample slice
+// header is enough for that guarantee: Sample/FindingRecord hold nothing
+// but plain data, so there's no nested pointer left for a deep copy to
+// protect).
 func (c Cache) Samples(key string) ([]Sample, bool) {
 	for _, e := range c.Entries {
 		if e.Key == key {
-			return e.Samples, true
+			samples := make([]Sample, len(e.Samples))
+			copy(samples, e.Samples)
+			return samples, true
 		}
 	}
 	return nil, false
