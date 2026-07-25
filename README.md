@@ -689,8 +689,10 @@ export SKILLCI_INGEST_TOKENS="token-a=myorg/skill-a,token-b=myorg/skill-b"
 [`editors/vscode`](editors/vscode) runs `skillci check --format json` on
 open/save/edit and surfaces the results as inline diagnostics — security
 findings as Errors, everything else as Warnings — instead of only in a
-terminal or CI log. Not yet published to the Marketplace; build and install
-it locally:
+terminal or CI log. Available on the
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=kabirnarang39.skillci)
+(search "SkillCI" in the Extensions panel), or build and install it
+locally:
 
 ```bash
 cd editors/vscode
