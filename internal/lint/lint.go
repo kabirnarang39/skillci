@@ -287,6 +287,15 @@ func LintEvals(dir string) ([]Issue, error) {
 				Msg:  fmt.Sprintf("case %q sets judge_strict: true without any judge criteria — judge_strict has no effect unless judge is also set", c.Name),
 			})
 		}
+		// Mirrors judge-strict-without-judge above — same reasoning.
+		if c.Assert.RedteamStrict != nil && *c.Assert.RedteamStrict && len(c.Assert.Redteam) == 0 {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "redteam-strict-without-redteam",
+				Msg:  fmt.Sprintf("case %q sets redteam_strict: true without any redteam plugins — redteam_strict has no effect unless redteam is also set", c.Name),
+			})
+		}
 	}
 	return issues, nil
 }

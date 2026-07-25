@@ -656,6 +656,77 @@ assert:
 	}
 }
 
+func TestLintEvalsFlagsRedteamStrictWithoutRedteam(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  redteam_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "redteam-strict-without-redteam" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a redteam-strict-without-redteam issue", issues)
+	}
+}
+
+func TestLintEvalsFlagsRedteamStrictWithEmptyRedteamList(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  redteam: []\n  redteam_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "redteam-strict-without-redteam" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a redteam-strict-without-redteam issue when redteam is explicitly empty", issues)
+	}
+}
+
+func TestLintEvalsNoWarningWhenRedteamAndRedteamStrictSet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  redteam:\n    - plugin: prompt-injection-canary\n  redteam_strict: true\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "redteam-strict-without-redteam" {
+			t.Errorf("issues = %+v, want no redteam-strict-without-redteam issue when redteam is also set", issues)
+		}
+	}
+}
+
 func TestLintEvalsNoEvalsDirIsNotAnError(t *testing.T) {
 	dir := t.TempDir()
 	issues, err := LintEvals(dir)
