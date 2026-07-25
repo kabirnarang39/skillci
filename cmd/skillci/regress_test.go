@@ -348,6 +348,171 @@ func TestRegressCommandOpenPRPushesBranchAndOpensPullRequest(t *testing.T) {
 	}
 }
 
+func stubAnthropicNoTrigger(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: false"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestRegressCommandOpenPRSkipsWithoutGitHubEnvVars covers
+// openGeneratedCasePR's first guard -- previously untested. --open-pr
+// must degrade to a warning, never fail the whole regress run, when
+// GITHUB_REPOSITORY/GITHUB_TOKEN aren't set (e.g. running locally,
+// outside CI).
+func TestRegressCommandOpenPRSkipsWithoutGitHubEnvVars(t *testing.T) {
+	anthropicSrv := stubAnthropicNoTrigger(t)
+	dir := setupSkillWithCaseAndGitRemote(t)
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", anthropicSrv.URL)
+	t.Setenv("GITHUB_REPOSITORY", "")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--open-pr", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; open-pr's own failure must never fail regress itself; output = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "requires GITHUB_REPOSITORY and GITHUB_TOKEN") {
+		t.Errorf("output = %q, want a warning naming the missing env vars", out.String())
+	}
+}
+
+// TestRegressCommandOpenPRUsesGitHubRefNameWhenSet covers the
+// GITHUB_REF_NAME branch directly -- previously only the "unset, fall
+// back to local checkout" path had a test. Matches actions/checkout's
+// real behavior: detached HEAD, so gitutil.CurrentBranch alone couldn't
+// recover a base branch without this.
+func TestRegressCommandOpenPRUsesGitHubRefNameWhenSet(t *testing.T) {
+	anthropicSrv := stubAnthropicNoTrigger(t)
+	var prBase string
+	githubSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Head, Base string }
+		json.NewDecoder(r.Body).Decode(&body)
+		prBase = body.Base
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"html_url": "https://github.com/acme/widget/pull/9"})
+	}))
+	defer githubSrv.Close()
+
+	dir := setupSkillWithCaseAndGitRemote(t)
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", anthropicSrv.URL)
+	t.Setenv("GITHUB_REPOSITORY", "acme/widget")
+	t.Setenv("GITHUB_TOKEN", "test-gh-token")
+	t.Setenv("SKILLCI_GITHUB_API_URL", githubSrv.URL)
+	t.Setenv("GITHUB_REF_NAME", "release-branch")
+	t.Setenv("GITHUB_SHA", "")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--open-pr", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+	if prBase != "release-branch" {
+		t.Errorf("PR base = %q, want GITHUB_REF_NAME's value release-branch, not the local checkout", prBase)
+	}
+}
+
+// TestRegressCommandOpenPRSkipsWhenBaseBranchUnresolvable covers
+// openGeneratedCasePR's second guard -- previously untested: detached
+// HEAD locally AND GITHUB_REF_NAME unset leaves no base branch to open a
+// PR against.
+func TestRegressCommandOpenPRSkipsWhenBaseBranchUnresolvable(t *testing.T) {
+	anthropicSrv := stubAnthropicNoTrigger(t)
+	dir := setupSkillWithCaseAndGitRemote(t)
+	sha, err := gitutil.RevParseHEAD(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runGitCmd(t, dir, "checkout", "-q", sha) // detach
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", anthropicSrv.URL)
+	t.Setenv("GITHUB_REPOSITORY", "acme/widget")
+	t.Setenv("GITHUB_TOKEN", "test-gh-token")
+	t.Setenv("GITHUB_REF_NAME", "")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--open-pr", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "could not determine a base branch") {
+		t.Errorf("output = %q, want a warning that no base branch could be resolved", out.String())
+	}
+}
+
+// TestRegressCommandOpenPRWarnsWhenPushFails covers prbranch.Push
+// failing -- previously untested. A bad/unreachable remote must degrade
+// to a warning, not fail the whole regress run.
+func TestRegressCommandOpenPRWarnsWhenPushFails(t *testing.T) {
+	anthropicSrv := stubAnthropicNoTrigger(t)
+	dir := setupSkillWithCaseAndGitRemote(t)
+	runGitCmd(t, dir, "remote", "remove", "origin")
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", anthropicSrv.URL)
+	t.Setenv("GITHUB_REPOSITORY", "acme/widget")
+	t.Setenv("GITHUB_TOKEN", "test-gh-token")
+	t.Setenv("GITHUB_REF_NAME", "")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--open-pr", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "failed to push branch") {
+		t.Errorf("output = %q, want a warning that the push failed", out.String())
+	}
+}
+
+// TestRegressCommandOpenPRWarnsWhenGitHubAPIFails covers githubpr.Open
+// failing after a successful push -- previously untested. The generated
+// case is already pushed at this point; the failure must still just be a
+// warning, matching the "already usable either way" design.
+func TestRegressCommandOpenPRWarnsWhenGitHubAPIFails(t *testing.T) {
+	anthropicSrv := stubAnthropicNoTrigger(t)
+	githubSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer githubSrv.Close()
+
+	dir := setupSkillWithCaseAndGitRemote(t)
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", anthropicSrv.URL)
+	t.Setenv("GITHUB_REPOSITORY", "acme/widget")
+	t.Setenv("GITHUB_TOKEN", "test-gh-token")
+	t.Setenv("SKILLCI_GITHUB_API_URL", githubSrv.URL)
+	t.Setenv("GITHUB_REF_NAME", "")
+
+	cmd := newRegressCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--open-pr", dir})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v; output = %s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "failed to open the pull request") {
+		t.Errorf("output = %q, want a warning that opening the pull request failed", out.String())
+	}
+}
+
 // TestRegressCommandWarnsOnStaleGeneratedCase is the end-to-end
 // reachability test for the generated-case staleness warning: it runs the
 // real regress command against a real pre-existing stale generated-case

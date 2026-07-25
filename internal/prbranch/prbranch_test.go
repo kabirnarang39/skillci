@@ -213,3 +213,46 @@ func TestPushCreatesUniqueBranchFromCurrentHEAD(t *testing.T) {
 		t.Errorf("merge-base(main, pushed branch) = %q, want %q (pushed branch must be created from main)", base, mainSHA)
 	}
 }
+
+// TestPushNotAGitRepoErrors covers CurrentBranch failing right at the
+// start -- previously untested.
+func TestPushNotAGitRepoErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := Push(dir, []string{"x.txt"}, "msg", "origin", "some-branch"); err == nil {
+		t.Error("Push() error = nil, want error outside a git repository")
+	}
+}
+
+// TestPushErrorsWhenBranchAlreadyExists covers `git checkout -b` failing
+// -- previously untested. Still must restore the original checkout
+// afterward, same as every other failure path.
+func TestPushErrorsWhenBranchAlreadyExists(t *testing.T) {
+	dir := setupRepoWithRemote(t)
+	origBranch := gitOutput(t, dir, "branch", "--show-current")
+	runGitT(t, dir, "branch", "already-exists")
+
+	newFile := filepath.Join(dir, "evals", "_generated", "new-case.yaml")
+	if err := os.MkdirAll(filepath.Dir(newFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newFile, []byte("name: new-case\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Push(dir, []string{newFile}, "add generated case", "origin", "already-exists"); err == nil {
+		t.Fatal("Push() error = nil, want error creating a branch that already exists")
+	}
+	if got := gitOutput(t, dir, "branch", "--show-current"); got != origBranch {
+		t.Errorf("branch after failed Push() = %q, want restored to original %q", got, origBranch)
+	}
+}
+
+// TestPushErrorsWhenPathDoesNotExist covers `git add` failing on a
+// nonexistent path -- previously untested.
+func TestPushErrorsWhenPathDoesNotExist(t *testing.T) {
+	dir := setupRepoWithRemote(t)
+
+	if err := Push(dir, []string{filepath.Join(dir, "does-not-exist.yaml")}, "msg", "origin", "skillci/missing-path-test"); err == nil {
+		t.Fatal("Push() error = nil, want error adding a nonexistent path")
+	}
+}

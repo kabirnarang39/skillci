@@ -56,6 +56,14 @@ func TestRevParseHEAD(t *testing.T) {
 	}
 }
 
+// TestRevParseHEADNotAGitRepoErrors covers the error path -- previously
+// untested; every existing RevParseHEAD test ran against a real repo.
+func TestRevParseHEADNotAGitRepoErrors(t *testing.T) {
+	if _, err := RevParseHEAD(t.TempDir()); err == nil {
+		t.Error("RevParseHEAD() error = nil, want error outside a git repository")
+	}
+}
+
 func TestCurrentBranchReturnsBranchName(t *testing.T) {
 	dir := initRepo(t)
 	commitFile(t, dir, "a.txt", "hello", "initial")
@@ -84,6 +92,14 @@ func TestCurrentBranchReturnsHEADWhenDetached(t *testing.T) {
 	}
 	if got != "HEAD" {
 		t.Errorf("CurrentBranch() = %q, want %q (detached HEAD)", got, "HEAD")
+	}
+}
+
+// TestCurrentBranchNotAGitRepoErrors covers the error path -- previously
+// untested.
+func TestCurrentBranchNotAGitRepoErrors(t *testing.T) {
+	if _, err := CurrentBranch(t.TempDir()); err == nil {
+		t.Error("CurrentBranch() error = nil, want error outside a git repository")
 	}
 }
 
@@ -270,6 +286,27 @@ func TestShowReturnsCommitInfo(t *testing.T) {
 	}
 	if info.Date == "" {
 		t.Error("Date is empty")
+	}
+}
+
+// TestShowInvalidSHAErrors covers the error path -- previously untested.
+func TestShowInvalidSHAErrors(t *testing.T) {
+	dir := initRepo(t)
+	commitFile(t, dir, "a.txt", "hello", "initial")
+
+	if _, err := Show(dir, "not-a-real-sha"); err == nil {
+		t.Error("Show() error = nil, want error for a nonexistent SHA")
+	}
+}
+
+// TestWorktreeAddInvalidSHAErrors covers the error path -- previously
+// untested; every existing WorktreeAdd test used a real commit SHA.
+func TestWorktreeAddInvalidSHAErrors(t *testing.T) {
+	dir := initRepo(t)
+	commitFile(t, dir, "a.txt", "hello", "initial")
+
+	if _, _, err := WorktreeAdd(dir, "not-a-real-sha"); err == nil {
+		t.Error("WorktreeAdd() error = nil, want error for a nonexistent SHA")
 	}
 }
 
