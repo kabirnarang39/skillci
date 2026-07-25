@@ -2675,3 +2675,61 @@ func TestRunCaseJudgeSamplesPartialCacheReuse(t *testing.T) {
 		t.Errorf("SampleCount = %d, want 3", result.JudgeFindings[0].SampleCount)
 	}
 }
+
+// TestRunCaseJudgeCorruptCacheFileDegradesToLiveCall proves a corrupt
+// .skillci/judge-cache.json (e.g. truncated by a git merge conflict)
+// degrades judge caching to "always call the judge model live" rather
+// than failing the case — judgecache.Load's error is deliberately more
+// lenient here than a missing/unreadable file elsewhere in skillci.
+func TestRunCaseJudgeCorruptCacheFileDegradesToLiveCall(t *testing.T) {
+	judgeCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nHi!"
+		if req.Model == "claude-opus-4-8" {
+			judgeCalls++
+			text = "SKILLCI_JUDGE: tone = PASS"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	cacheDir := filepath.Join(dir, ".skillci")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "judge-cache.json"), []byte("not valid json{{{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8", "batched")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v, want a corrupt cache file to degrade to live calls, not fail the case", err)
+	}
+	if judgeCalls != 1 {
+		t.Errorf("judgeCalls = %d, want 1 — a corrupt cache file must still make the judge API call live", judgeCalls)
+	}
+	if len(result.JudgeFindings) != 1 || !result.JudgeFindings[0].Passed {
+		t.Errorf("JudgeFindings = %+v, want one passing finding", result.JudgeFindings)
+	}
+}
