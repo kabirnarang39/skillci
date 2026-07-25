@@ -1,6 +1,12 @@
 models: [claude-sonnet-5]
 fail_on: regression
 
+# Required for judge-graded assertions (judge:, and the redteam: plugins
+# jailbreak-direct-override/harmful-content-elicitation) — deliberately a
+# separate, stronger model than the models under test, since a model can't
+# reliably judge itself when it's also the thing that might have drifted.
+judge_model: claude-opus-4-8
+
 # Illustrative example rates, not a live Anthropic price feed — see
 # internal/config/config.go: skillci never hardcodes or maintains a
 # pricing table itself, since Anthropic can reprice without notice.
