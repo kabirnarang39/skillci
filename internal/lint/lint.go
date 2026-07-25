@@ -269,6 +269,16 @@ func LintEvals(dir string) ([]Issue, error) {
 				Msg:  fmt.Sprintf("case %q sets flake_strict: true without a positive flake_retries — flake_strict has no effect unless flake_retries is also set above 0", c.Name),
 			})
 		}
+		// Mirrors the flake-strict-without-flake-retries rule above — same
+		// runner.go gating condition (*FlakeRetries > 0), same reasoning.
+		if c.Assert.FlakeAlwaysSample != nil && *c.Assert.FlakeAlwaysSample && (c.Assert.FlakeRetries == nil || *c.Assert.FlakeRetries <= 0) {
+			issues = append(issues, Issue{
+				File: c.SourceFile,
+				Line: 1,
+				Rule: "flake-always-sample-without-flake-retries",
+				Msg:  fmt.Sprintf("case %q sets flake_always_sample: true without a positive flake_retries — flake_always_sample has no effect unless flake_retries is also set above 0", c.Name),
+			})
+		}
 		if c.Assert.JudgeStrict != nil && *c.Assert.JudgeStrict && len(c.Assert.Judge) == 0 {
 			issues = append(issues, Issue{
 				File: c.SourceFile,

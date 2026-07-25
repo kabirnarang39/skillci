@@ -22,7 +22,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **Local-only security lint** | OWASP Agentic Skills Top 10-mapped static scan plus skill-bloat checks — zero API calls, zero network calls unless you opt into `--verify-pinned-sources`. |
 | **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
 | **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. |
-| **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample. |
+| **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample; `flake_always_sample` votes on every case, not just failing ones, to also catch a regression that got lucky on attempt 1. |
 | **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
 | **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
 | **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
@@ -368,11 +368,19 @@ assert:
   flake_retries: 2
 ```
 
-Only fires when the FIRST attempt's trigger checks fail — a passing case
-never pays the extra cost. Up to `1 + flake_retries` total attempts are
-made, stopping early once a majority is mathematically decided (e.g. 2
-failing attempts out of 3 possible stops before the 3rd call). Budget
-assertions (`max_tokens_loaded`, `max_output_tokens`, `max_latency_ms`,
+By default, this only fires when the FIRST attempt's trigger checks fail
+— a passing case never pays the extra cost, but that has a real blind
+spot: a case that's genuinely flaky but happens to pass on attempt 1 is
+recorded as a clean pass with no vote at all, so it catches false
+positives (one unlucky roll) but not false negatives (a real regression
+that got lucky). Add `flake_always_sample: true` to vote every time,
+regardless of the first attempt's result, closing that gap at the cost
+of running the full vote on every case, not just failing ones — the same
+symmetric approach `judge_samples` already uses for the judge layer (see
+below). Up to `1 + flake_retries` total attempts are made either way,
+stopping early once a majority is mathematically decided (e.g. 2 failing
+attempts out of 3 possible stops before the 3rd call). Budget assertions
+(`max_tokens_loaded`, `max_output_tokens`, `max_latency_ms`,
 `max_cost_usd`) are never retried — they're checked once, same as
 always, since rerunning can't change a token-count-derived cost or
 latency reading into something more "correct."
@@ -429,8 +437,9 @@ In isolated mode, each criterion gets its own API call and independent reasoning
 eliminating cross-criterion bias; in batched mode (the default), all criteria share
 one call. Judge model's own sampling variance can make verdicts flaky on borderline
 cases. For cases where that matters, `judge_samples` draws N independent verdict samples
-per criterion group and majority-votes the result, same asymmetry `flake_retries`
-closes for the case model:
+per criterion group and votes unconditionally every time — the same symmetric approach
+`flake_always_sample` opts the case model into (see above), just always-on here rather
+than a flag:
 
 ```yaml
 assert:

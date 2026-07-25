@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `flake_always_sample`: votes on `flake_retries` every case, not just
+  ones whose first attempt already failed — closes the blind spot where
+  a genuinely flaky/regressed case passes by luck on attempt 1 and is
+  never rechecked. Mirrors the always-sample pattern `judge_samples`
+  already used for the judge layer. Off by default, no behavior change
+  unless set.
+
 ## [v0.3.2] — 2026-07-25
 
 ### Added

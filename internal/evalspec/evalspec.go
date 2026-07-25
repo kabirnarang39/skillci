@@ -78,6 +78,18 @@ type Assertions struct {
 	// attempts) a hard case failure. Meaningless if FlakeRetries is not
 	// set. Without it, a tie is informational only.
 	FlakeStrict *bool `yaml:"flake_strict,omitempty"`
+	// FlakeAlwaysSample runs the full FlakeRetries vote even when the
+	// first attempt already passes its trigger checks, instead of only
+	// voting after an initial failure. Without it, a case that's
+	// genuinely flaky but happens to pass on attempt 1 is recorded as a
+	// clean pass with no vote at all — catching false positives (one
+	// unlucky roll) but not false negatives (a real regression that got
+	// lucky). Mirrors JudgeSamples, which already always samples
+	// unconditionally for the judge layer; this closes the same gap for
+	// the case-level trigger checks, at the cost of running the full
+	// vote (and its API calls) on every case, not just failing ones.
+	// Meaningless if FlakeRetries is not set.
+	FlakeAlwaysSample *bool `yaml:"flake_always_sample,omitempty"`
 	// Judge lists criteria a separate judge model evaluates against the
 	// response, once every other assertion has already passed. All
 	// criteria must pass for the judge step itself to pass. Requires

@@ -134,8 +134,10 @@ If, given the user's message, you would invoke this skill, begin your response w
 	result.LatencyExceeded = latencyExceeded
 
 	shouldFailOnTrigger := len(triggerMsgs) > 0
-	if len(triggerMsgs) > 0 && c.Assert.FlakeRetries != nil && *c.Assert.FlakeRetries > 0 {
-		verdict, passed, total, verr := voteOnFlakeRetries(ctx, client, model, systemPrompt, c)
+	firstAttemptPassed := len(triggerMsgs) == 0
+	alwaysSample := c.Assert.FlakeAlwaysSample != nil && *c.Assert.FlakeAlwaysSample
+	if c.Assert.FlakeRetries != nil && *c.Assert.FlakeRetries > 0 && (!firstAttemptPassed || alwaysSample) {
+		verdict, passed, total, verr := voteOnFlakeRetries(ctx, client, model, systemPrompt, c, firstAttemptPassed)
 		if verr != nil {
 			return Result{}, verr
 		}
@@ -147,8 +149,14 @@ If, given the user's message, you would invoke this skill, begin your response w
 			shouldFailOnTrigger = false
 		case "confirmed_fail":
 			shouldFailOnTrigger = true
+			if firstAttemptPassed {
+				triggerMsgs = []string{fmt.Sprintf("flake vote confirmed_fail despite the first attempt passing: %d/%d attempts passed trigger assertions", passed, total)}
+			}
 		case "unstable":
 			shouldFailOnTrigger = c.Assert.FlakeStrict != nil && *c.Assert.FlakeStrict
+			if shouldFailOnTrigger && firstAttemptPassed {
+				triggerMsgs = []string{fmt.Sprintf("flake vote unstable (flake_strict): %d/%d attempts passed trigger assertions", passed, total)}
+			}
 		}
 	}
 
@@ -563,14 +571,16 @@ func checkBudgetAssertions(inputTokens, outputTokens int, latencyMs int64, model
 }
 
 // voteOnFlakeRetries re-runs c's prompt up to c.Assert.FlakeRetries
-// additional times (the caller has already made attempt 1, which failed
-// its trigger checks — that's why this was called), taking a majority
-// verdict across all attempts. It stops making further calls as soon as
-// a majority is mathematically decided, to avoid spending the full
-// budget when the outcome can no longer change.
-func voteOnFlakeRetries(ctx context.Context, client *anthropic.Client, model, systemPrompt string, c evalspec.Case) (verdict string, passed, total int, err error) {
+// additional times (the caller has already made attempt 1, whose result is
+// passed in as firstAttemptPassed — normally a failure, the reason a vote
+// was called for at all, but FlakeAlwaysSample can call this after a
+// passing first attempt too), taking a majority verdict across all
+// attempts. It stops making further calls as soon as a majority is
+// mathematically decided, to avoid spending the full budget when the
+// outcome can no longer change.
+func voteOnFlakeRetries(ctx context.Context, client *anthropic.Client, model, systemPrompt string, c evalspec.Case, firstAttemptPassed bool) (verdict string, passed, total int, err error) {
 	maxAttempts := 1 + *c.Assert.FlakeRetries
-	attemptPassed := []bool{false} // attempt 1 already known to have failed
+	attemptPassed := []bool{firstAttemptPassed}
 
 	for len(attemptPassed) < maxAttempts {
 		passes, fails := countPassFail(attemptPassed)

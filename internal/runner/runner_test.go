@@ -1544,6 +1544,188 @@ func TestRunCaseFlakeRetriesNotTriggeredWhenFirstAttemptPasses(t *testing.T) {
 	}
 }
 
+func TestRunCaseFlakeAlwaysSampleVotesEvenWhenFirstAttemptPasses(t *testing.T) {
+	// Without flake_always_sample, a passing first attempt never triggers a
+	// vote at all (see TestRunCaseFlakeRetriesNotTriggeredWhenFirstAttemptPasses).
+	// With it set, the vote runs regardless — closing the "got lucky on
+	// attempt 1" blind spot. Early-stop still applies: 2 straight passes
+	// out of a possible 3 already decides the majority, so the 3rd
+	// response must never be consumed.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: false", // must never be reached — decided after 2
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2), FlakeAlwaysSample: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if result.FlakeVerdict != "confirmed_pass" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_pass", result.FlakeVerdict)
+	}
+	if *callCount != 2 {
+		t.Errorf("callCount = %d, want 2 — flake_always_sample must still vote despite attempt 1 passing, and still early-stop", *callCount)
+	}
+}
+
+func TestRunCaseFlakeAlwaysSampleCatchesRegressionThatGotLuckyOnFirstAttempt(t *testing.T) {
+	// The exact blind spot flake_always_sample closes: attempt 1 passes,
+	// but it's actually a flaky/regressed case — attempts 2-3 reveal the
+	// true failing majority.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2), FlakeAlwaysSample: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — 2 of 3 attempts failed, despite attempt 1 passing")
+	}
+	if result.FlakeVerdict != "confirmed_fail" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_fail", result.FlakeVerdict)
+	}
+	if *callCount != 3 {
+		t.Errorf("callCount = %d, want 3", *callCount)
+	}
+	if len(result.Failures) == 0 {
+		t.Fatal("Failures is empty, want a synthesized message — attempt 1's own trigger check passed, so there's no natural failure message to report")
+	}
+	found := false
+	for _, f := range result.Failures {
+		if strings.Contains(f, "despite the first attempt passing") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Failures = %v, want a message noting the vote overturned a passing first attempt", result.Failures)
+	}
+}
+
+func TestRunCaseFlakeAlwaysSampleUnstableTieNonStrictStaysPassing(t *testing.T) {
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: false",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1), FlakeAlwaysSample: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true — an unresolved tie is informational only without flake_strict; Failures = %v", result.Failures)
+	}
+	if result.FlakeVerdict != "unstable" {
+		t.Errorf("FlakeVerdict = %q, want unstable", result.FlakeVerdict)
+	}
+	if *callCount != 2 {
+		t.Errorf("callCount = %d, want 2", *callCount)
+	}
+}
+
+func TestRunCaseFlakeAlwaysSampleUnstableTieStrictFails(t *testing.T) {
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: false",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1), FlakeAlwaysSample: truePtr(), FlakeStrict: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false — flake_strict must fail an unresolved tie even when it started from a passing first attempt")
+	}
+	if result.FlakeVerdict != "unstable" {
+		t.Errorf("FlakeVerdict = %q, want unstable", result.FlakeVerdict)
+	}
+	if *callCount != 2 {
+		t.Errorf("callCount = %d, want 2", *callCount)
+	}
+	if len(result.Failures) == 0 {
+		t.Fatal("Failures is empty, want a synthesized message — attempt 1's own trigger check passed, so there's no natural failure message to report")
+	}
+	found := false
+	for _, f := range result.Failures {
+		if strings.Contains(f, "flake vote unstable") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Failures = %v, want a message noting the unresolved vote", result.Failures)
+	}
+}
+
+func TestRunCaseFlakeAlwaysSampleWithoutFlakeRetriesIsInert(t *testing.T) {
+	// Mirrors TestRunCaseFlakeStrictAloneWithoutFlakeRetriesIsInert: the
+	// flag only means anything alongside a positive FlakeRetries.
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: true",
+		"SKILLCI_TRIGGERED: false", // must never be reached
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeAlwaysSample: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if result.FlakeVerdict != "" {
+		t.Errorf("FlakeVerdict = %q, want empty — flake_always_sample without flake_retries must be inert", result.FlakeVerdict)
+	}
+	if *callCount != 1 {
+		t.Errorf("callCount = %d, want 1", *callCount)
+	}
+}
+
 func TestRunCaseFlakeStrictAloneWithoutFlakeRetriesIsInert(t *testing.T) {
 	// flake_strict: true with no flake_retries set at all — per the
 	// design's error-handling section, this must be inert config, not an
