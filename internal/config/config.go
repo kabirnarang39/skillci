@@ -36,6 +36,18 @@ type ModelPricing struct {
 	OutputPerMillion float64 `yaml:"output_per_million"`
 }
 
+// validFailOn is the exact set ShouldFailCI's switch (internal/regress)
+// recognizes. Kept in sync by hand — ShouldFailCI's default case silently
+// treats anything else as "regression", so an unrecognized value here must
+// fail loudly at load time instead of silently getting the loosest policy.
+var validFailOn = map[string]bool{
+	"regression":     true,
+	"any_fail":       true,
+	"triggered_only": true,
+}
+
+const validFailOnList = `"regression", "any_fail", "triggered_only"`
+
 func Default() Config {
 	return Config{
 		Models: []string{"claude-sonnet-5"},
@@ -63,6 +75,9 @@ func Load(path string) (Config, error) {
 	}
 	if cfg.FailOn == "" {
 		cfg.FailOn = Default().FailOn
+	}
+	if _, ok := validFailOn[cfg.FailOn]; !ok {
+		return Config{}, fmt.Errorf("fail_on: %q is not a recognized value — must be one of %s", cfg.FailOn, validFailOnList)
 	}
 	// Sorted iteration: map order is nondeterministic in Go, and if
 	// multiple pricing entries are invalid at once the error should

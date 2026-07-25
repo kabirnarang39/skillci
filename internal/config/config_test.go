@@ -27,6 +27,31 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsUnrecognizedFailOn covers a typo'd or otherwise invalid
+// fail_on value (e.g. "any_fial", or a value from an older/newer version
+// of the tool the user misremembers). Without validation, ShouldFailCI's
+// switch silently falls through to its "regression" default for any
+// unrecognized string — so a user who thought they configured any_fail
+// (fail on every failing case) gets the loosest policy instead, with
+// nothing telling them their config was ignored. This must be a load-time
+// error, not a silent fallback.
+func TestLoadRejectsUnrecognizedFailOn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "fail_on: any_fial\n" // typo of any_fail
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for an unrecognized fail_on value")
+	}
+	if !strings.Contains(err.Error(), "any_fial") {
+		t.Errorf("Load() error = %q, want it to name the invalid value", err)
+	}
+}
+
 func TestLoadMissingFileReturnsDefault(t *testing.T) {
 	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
 	if err != nil {

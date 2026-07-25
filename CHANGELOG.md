@@ -52,6 +52,13 @@ and this project follows [Semantic Versioning](https://semver.org/).
   of that eval case. Now generates one mutation per eligible word, each
   swapping only that word, so a flipped trigger can still be attributed
   to a specific swap.
+- `.skillci.yaml`'s `fail_on` now rejects an unrecognized value at load
+  time instead of silently falling back to the `regression` policy.
+  Previously a typo (e.g. `any_fial`) or an otherwise invalid value
+  produced no error — `ShouldFailCI`'s switch defaults to `regression`
+  for anything it doesn't recognize — so a user who configured what they
+  thought was the strictest policy could end up with the loosest one and
+  never find out.
 
 ## [v0.2.0] — 2026-07-24
 
