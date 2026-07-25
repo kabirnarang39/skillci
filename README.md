@@ -365,17 +365,38 @@ can't reliably judge its own drift:
 judge_model: claude-opus-4-8
 ```
 
-All criteria must pass for the judge step to pass. Every criterion is
-evaluated together in a single extra API call, regardless of how many
-you list. Judging only runs once every other assertion has already
-passed — it's the last check, not a substitute for `triggered`/
-`contains`. Add `judge_strict: true` to fail CI on a failing criterion;
-without it, a failure just prints:
+All criteria must pass for the judge step to pass. By default, every
+criterion is evaluated together in a single API call (the `batched` mode).
+Judging only runs once every other assertion has already passed — it's the
+last check, not a substitute for `triggered`/`contains`. Add `judge_strict: true`
+to fail CI on a failing criterion; without it, a failure just prints:
 
 ```
 [JUDGE] 1/2 criteria failed
   tone: FAIL — reads as clinical rather than warm
 ```
+
+To trade cost for full per-criterion reasoning isolation, set `judge_mode: isolated`
+in `.skillci.yaml` (the global default) or override it per-case with `assert.judge_mode`.
+In isolated mode, each criterion gets its own API call and independent reasoning,
+eliminating cross-criterion bias; in batched mode (the default), all criteria share
+one call. Judge model's own sampling variance can make verdicts flaky on borderline
+cases. For cases where that matters, `judge_samples` draws N independent verdict samples
+per criterion group and majority-votes the result, same asymmetry `flake_retries`
+closes for the case model:
+
+```yaml
+assert:
+  judge:
+    - name: tone
+      criterion: "Is the response warm and encouraging, not clinical?"
+  judge_samples: 3
+```
+
+The `[JUDGE]` output shows sample tallies when `judge_samples` is set above 1
+(e.g. `"(2/3 samples passed)"`). Judge verdicts are cached to `.skillci/judge-cache.json`
+so a repeat call against an unchanged response never re-pays for the API call,
+matching how `.skillci/fuzz-llm-cache.json` avoids regenerating paraphrases.
 
 This is deliberately the most opt-in, most secondary assertion type in
 skillci: the whole premise of this tool is catching model drift

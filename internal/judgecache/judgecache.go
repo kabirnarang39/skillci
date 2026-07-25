@@ -93,9 +93,9 @@ func (c Cache) Samples(key string) ([]Sample, bool) {
 	return nil, false
 }
 
-// maxRetainedEntries bounds cache growth, matching
-// internal/fuzzcache/internal/bisectcache/internal/history's identical
-// retention convention for a git-committed artifact.
+// maxRetainedEntries bounds cache growth, matching internal/fuzzcache,
+// internal/bisectcache, and internal/history's identical retention
+// convention for a git-committed artifact.
 const maxRetainedEntries = 500
 
 // Append records one more sample for key, creating the entry if it

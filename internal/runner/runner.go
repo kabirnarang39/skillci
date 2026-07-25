@@ -54,10 +54,10 @@ type Result struct {
 }
 
 // JudgeFinding is one criterion's verdict from the judge model.
-// SampleCount and PassCount are both 0 when the case didn't set
-// judge_samples (i.e. a single sample was trusted directly, with no
-// voting) — CLI/dashboard output only renders a vote tally when there's
-// an actual vote behind it.
+// SampleCount is always populated (1 for the default single-sample case,
+// reproducing today's exact behavior before voting was added); PassCount
+// is the number of passing samples out of SampleCount. Callers should check
+// SampleCount > 1 to detect whether real voting happened, not SampleCount != 0.
 type JudgeFinding struct {
 	Name        string
 	Passed      bool
