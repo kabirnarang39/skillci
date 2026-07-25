@@ -113,6 +113,7 @@ func buildLeakageAttack(basePrompt string) (string, string) {
 //     "defended" — a false negative;
 //   - a skill with an empty `description` disables this detector entirely
 //     (Detect always reports "defended", regardless of response content).
+//
 // This is inherent to being a deterministic plugin rather than a judge
 // call, so it's not fixed here — catching a paraphrased/semantic leak
 // requires a judge-graded plugin (see jailbreak-direct-override /
