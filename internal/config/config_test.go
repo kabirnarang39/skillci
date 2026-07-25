@@ -1,10 +1,12 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoad(t *testing.T) {
@@ -233,5 +235,39 @@ func TestLoadJudgeModelDefaultsEmpty(t *testing.T) {
 	}
 	if cfg.JudgeModel != "" {
 		t.Errorf("JudgeModel = %q, want empty when not configured", cfg.JudgeModel)
+	}
+}
+
+// TestLoadRejectsYAMLAliasBombQuickly covers a "billion laughs"-style YAML
+// alias-expansion attack in .skillci.yaml. yaml.v3 has its own built-in
+// alias-count limit; this locks in that skillci's own error path surfaces
+// it cleanly and quickly rather than hanging or OOMing — run with a hard
+// deadline so a real regression here fails the test instead of hanging
+// the whole suite.
+func TestLoadRejectsYAMLAliasBombQuickly(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	bomb := "a0: &a0 [\"x\",\"x\",\"x\",\"x\",\"x\",\"x\",\"x\",\"x\",\"x\"]\n"
+	for i := 1; i < 10; i++ {
+		bomb += fmt.Sprintf("a%d: &a%d [*a%d,*a%d,*a%d,*a%d,*a%d,*a%d,*a%d,*a%d,*a%d]\n", i, i, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1)
+	}
+	bomb += "models: [*a9]\n"
+	if err := os.WriteFile(path, []byte(bomb), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Load(path)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("Load() error = nil, want an error rejecting the alias bomb")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Load() did not return within 5s — alias-bomb protection regressed")
 	}
 }

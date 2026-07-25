@@ -1,10 +1,12 @@
 package evalspec
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeCase(t *testing.T, dir, filename, content string) {
@@ -338,5 +340,38 @@ func TestLoadDirJudgeFieldsDefaultNil(t *testing.T) {
 	}
 	if c.Assert.JudgeStrict != nil {
 		t.Errorf("JudgeStrict = %v, want nil when not specified", c.Assert.JudgeStrict)
+	}
+}
+
+// TestLoadDirRejectsYAMLAliasBombQuickly covers a "billion laughs"-style
+// YAML alias-expansion attack (nested anchors/aliases that expand
+// exponentially) — genuinely untrusted-ish content, since evals/*.yaml can
+// be edited by anyone with repo write access. yaml.v3 has its own
+// built-in alias-count limit, but this locks in that skillci's own error
+// path surfaces it cleanly and quickly rather than hanging or OOMing —
+// run with a hard deadline so a real regression here fails the test
+// instead of hanging the whole suite.
+func TestLoadDirRejectsYAMLAliasBombQuickly(t *testing.T) {
+	dir := t.TempDir()
+	bomb := "a0: &a0 [\"x\",\"x\",\"x\",\"x\",\"x\",\"x\",\"x\",\"x\",\"x\"]\n"
+	for i := 1; i < 10; i++ {
+		bomb += fmt.Sprintf("a%d: &a%d [*a%d,*a%d,*a%d,*a%d,*a%d,*a%d,*a%d,*a%d,*a%d]\n", i, i, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1, i-1)
+	}
+	bomb += "name: *a9\nprompt: p\n"
+	writeCase(t, dir, "bomb.yaml", bomb)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := LoadDir(dir)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("LoadDir() error = nil, want an error rejecting the alias bomb")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("LoadDir() did not return within 5s — alias-bomb protection regressed")
 	}
 }
