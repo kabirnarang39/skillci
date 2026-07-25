@@ -2053,6 +2053,50 @@ func TestRunCaseJudgeMissingReasoningLineStillParsesVerdict(t *testing.T) {
 	}
 }
 
+// TestRunCaseJudgeMalformedReasoningLineIgnoredWithoutCorruptingVerdict
+// covers parseJudgeVerdicts's `!ok { continue }` branch for a
+// SKILLCI_JUDGE_REASONING line missing the second colon that separates
+// the criterion name from the reasoning text (e.g. a judge model that
+// wrote "tone no colon here" instead of "tone: no colon here"). That
+// line must be silently skipped — never mistaken for a name, never
+// applied as a reason, and never allowed to disturb the verdict line
+// that follows it.
+//
+// The verdict line is a bare "FAIL" (no inline reason) rather than PASS
+// specifically so this test can actually distinguish "skipped" from
+// "not skipped": a malformed line reading just "tone" (criterion name,
+// no separator at all) would — if the guard were missing — populate the
+// reasoning map under the key "tone" with an empty string, which would
+// overwrite the "no reason given" sentinel a bare FAIL gets by default.
+// A PASS-only version of this test would pass whether or not the guard
+// existed, since PASS's already-empty Reason has nothing to overwrite.
+func TestRunCaseJudgeMalformedReasoningLineIgnoredWithoutCorruptingVerdict(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nDo it yourself.",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE_REASONING: tone\nSKILLCI_JUDGE: tone = FAIL",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.JudgeFindings[0].Passed || result.JudgeFindings[0].Reason != "no reason given" {
+		t.Errorf("JudgeFindings[0] = %+v, want Passed=false Reason=%q — the malformed reasoning line must be skipped, not overwrite the bare-FAIL sentinel reason", result.JudgeFindings[0], "no reason given")
+	}
+}
+
 func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
 	// The trigger assertion passes; only a budget assertion (max_tokens_loaded)
 	// fails. flake_retries is set, but must have no effect — budget
