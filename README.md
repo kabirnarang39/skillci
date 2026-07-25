@@ -23,6 +23,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
 | **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. |
 | **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample; `flake_always_sample` votes on every case, not just failing ones, to also catch a regression that got lucky on attempt 1. |
+| **Adversarial redteam assertions** | `redteam:` runs named attack plugins (prompt injection, instruction leakage, jailbreak override, harmful content elicitation) against the skill — deterministic plugins cost one extra call and zero judge calls; judge-graded plugins reuse the existing judge model. A successful attack self-grows into a permanent regression case exactly like an uncovered model regression does. |
 | **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
 | **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
 | **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
@@ -41,10 +42,10 @@ Every other tool in this space does one slice of what skillci does — none comb
 | Git-native bisect (binary-search commit history for the culprit) | ✅ | ❌ | ❌ | ❌ |
 | LLM-as-judge | ✅ CoT + caching + self-consistency | ✅ rubric-based | ❌ | ✅ |
 | Live editor integration | ✅ VS Code | ❌ | ❌ | ❌ |
-| Adversarial/red-team prompt fuzzing | deterministic + LLM-paraphrase | — | — | ✅ more mature red-teaming than skillci's |
+| Adversarial/red-team prompt fuzzing | ✅ 4 plugins, local-only generation, self-growing corpus | — | — | ✅ 50+ plugins, cloud-generated, no persistent corpus |
 | Hosted dashboard | ✅ opt-in, self-hosted | — | — | ✅ (braintrust) |
 
-Where a competitor is genuinely ahead — promptfoo's adversarial red-teaming module is more sophisticated than skillci's fuzz today — that's called out, not glossed over.
+Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins across categories (BOLA, RBAC, multi-turn crescendo attacks) skillci's 4 don't cover yet, with years of production hardening skillci's few-day-old redteam assertions haven't had. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
 
 ## Why
 
@@ -460,6 +461,35 @@ deterministically, and an LLM judge is the one technique that can't
 judge itself reliably when the judge model is also something that might
 drift. Reach for the deterministic assertions first; add `judge` only
 for what genuinely can't be checked any other way.
+
+Deterministic assertions and judge criteria both test whether a skill behaves
+correctly on *intended* input. `redteam` tests whether it holds up against
+*adversarial* input — prompt injection, direct jailbreak attempts, instruction
+leakage, and harmful content elicitation:
+
+```yaml
+name: "haiku-request-redteam"
+prompt: "Can you write me a haiku about autumn leaves?"
+skill_under_test: "haiku-writer"
+assert:
+  triggered: true
+  redteam:
+    - plugin: prompt-injection-canary
+    - plugin: instruction-leakage
+    - plugin: jailbreak-direct-override
+    - plugin: harmful-content-elicitation
+  redteam_strict: true
+```
+
+`prompt-injection-canary` and `instruction-leakage` are fully local and
+deterministic — one extra model call each, zero judge calls, zero network
+calls beyond that. `jailbreak-direct-override` and `harmful-content-elicitation`
+reuse the same judge model `judge:` criteria use, and require `judge_model`
+configured the same way. A successful attack is informational only unless
+`redteam_strict: true` — and, same as any other case, a first-time-failing
+redteam case self-grows into a permanent regression under `evals/_generated/`
+via the existing self-growing eval loop, with zero special-casing: a caught
+jailbreak becomes a test that runs forever, not a report you read once.
 
 When a case that used to pass starts failing, `skillci bisect` finds which
 commit in your skill's own git history broke it — the same binary-search

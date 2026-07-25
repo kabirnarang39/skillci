@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `redteam:`/`redteam_strict:` assertion: adversarial attack plugins
+  (`prompt-injection-canary`, `instruction-leakage`, both deterministic
+  and zero extra judge-call cost; `jailbreak-direct-override`,
+  `harmful-content-elicitation`, both judge-graded, reusing the existing
+  judge model). A successful attack self-grows into a permanent
+  regression case via the existing self-growing eval loop, with no
+  redteam-specific code needed for that path.
+
 ## [v0.3.3] — 2026-07-26
 
 ### Added
