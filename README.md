@@ -5,7 +5,6 @@
 [![CI](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kabirnarang39/skillci)](https://goreportcard.com/report/github.com/kabirnarang39/skillci)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kabirnarang39/skillci.svg)](https://pkg.go.dev/github.com/kabirnarang39/skillci)
 
 ![SkillCI demo: skillci check, regress across a model matrix, catching an uncovered failure, generating an eval case, and accepting it](.github/assets/demo.gif)
