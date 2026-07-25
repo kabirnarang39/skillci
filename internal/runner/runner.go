@@ -478,6 +478,15 @@ func parseParaphraseLines(text string, max int) []string {
 // parseTriggerMarker splits the model's response into whether the skill
 // would have triggered and the response content to check assertions
 // against (empty when the model reports it would not have triggered).
+//
+// A "false" response is only treated as content-empty when the model
+// followed the system prompt's "respond with exactly ... and nothing
+// else" instruction to the letter. If it didn't — appending an
+// explanation after the marker despite the instruction — that trailing
+// text is preserved as content rather than discarded: it's what the
+// self-growing eval loop captures as a generated case's ActualResponse
+// (see internal/regress), and losing the model's own stated reasoning for
+// not triggering would make a generated case's failure context useless.
 func parseTriggerMarker(text string) (triggered bool, content string) {
 	firstLine, remainder, _ := strings.Cut(text, "\n")
 	if strings.TrimSpace(firstLine) == triggerMarkerPrefix+" true" {

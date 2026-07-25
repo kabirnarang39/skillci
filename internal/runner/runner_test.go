@@ -1756,3 +1756,42 @@ func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
 		t.Errorf("callCount = %d, want 1 — budget assertions are never retried regardless of flake_retries", *callCount)
 	}
 }
+
+func TestParseTriggerMarkerTrueStripsMarkerLineOnly(t *testing.T) {
+	triggered, content := parseTriggerMarker("SKILLCI_TRIGGERED: true\nThe actual response.")
+	if !triggered {
+		t.Error("triggered = false, want true")
+	}
+	if content != "The actual response." {
+		t.Errorf("content = %q, want %q", content, "The actual response.")
+	}
+}
+
+func TestParseTriggerMarkerFalseWithNothingElse(t *testing.T) {
+	triggered, content := parseTriggerMarker("SKILLCI_TRIGGERED: false")
+	if triggered {
+		t.Error("triggered = true, want false")
+	}
+	if content != "" {
+		t.Errorf("content = %q, want empty", content)
+	}
+}
+
+// TestParseTriggerMarkerFalseWithTrailingContentIsPreservedAsContent
+// covers a model that reports "false" but — despite the system prompt's
+// "nothing else" instruction — appends an explanation anyway. That
+// content is deliberately preserved (not stripped): it's what
+// internal/regress's self-growing eval loop captures as a generated
+// case's ActualResponse (see
+// TestRunMatrixGeneratedCaseCapturesFailureContext), so losing the
+// model's own stated reasoning here would make that failure context
+// useless. Still correctly classified as not-triggered either way.
+func TestParseTriggerMarkerFalseWithTrailingContentIsPreservedAsContent(t *testing.T) {
+	triggered, content := parseTriggerMarker("SKILLCI_TRIGGERED: false\nI would not use this skill because the request is unrelated.")
+	if triggered {
+		t.Error("triggered = true, want false — the model's own stated verdict")
+	}
+	if !strings.Contains(content, "I would not use this skill because the request is unrelated.") {
+		t.Errorf("content = %q, want the model's trailing explanation preserved", content)
+	}
+}
