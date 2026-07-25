@@ -1200,6 +1200,56 @@ func TestRunCaseFailsHardOnMissingPricingForCostAssertion(t *testing.T) {
 	}
 }
 
+// TestCheckBudgetAssertionsBoundaryValues directly sweeps
+// checkBudgetAssertions at the exact limit for each of the four budget
+// assertions — every existing budget test only checks "clearly over" and
+// "clearly under" the cap, never the boundary itself, which is exactly
+// where an off-by-one (> vs >=) would hide. The documented semantics are
+// that hitting the cap exactly is allowed; only exceeding it fails.
+func TestCheckBudgetAssertionsBoundaryValues(t *testing.T) {
+	pricing := map[string]config.ModelPricing{"m": {InputPerMillion: 1.0, OutputPerMillion: 1.0}}
+
+	tests := []struct {
+		name         string
+		inputTokens  int
+		outputTokens int
+		latencyMs    int64
+		assert       evalspec.Assertions
+		wantFail     bool
+	}{
+		{"max_tokens_loaded exactly at cap passes", 100, 0, 0, evalspec.Assertions{MaxTokensLoaded: intPtr(100)}, false},
+		{"max_tokens_loaded one over cap fails", 101, 0, 0, evalspec.Assertions{MaxTokensLoaded: intPtr(100)}, true},
+		{"max_output_tokens exactly at cap passes", 0, 100, 0, evalspec.Assertions{MaxOutputTokens: intPtr(100)}, false},
+		{"max_output_tokens one over cap fails", 0, 101, 0, evalspec.Assertions{MaxOutputTokens: intPtr(100)}, true},
+		{"max_latency_ms exactly at cap does not exceed", 0, 0, 100, evalspec.Assertions{MaxLatencyMs: int64Ptr(100), LatencyStrict: truePtr()}, false},
+		{"max_latency_ms one over cap exceeds", 0, 0, 101, evalspec.Assertions{MaxLatencyMs: int64Ptr(100), LatencyStrict: truePtr()}, true},
+		{"max_cost_usd exactly at cap passes", 1_000_000, 0, 0, evalspec.Assertions{MaxCostUSD: float64Ptr(1.0)}, false}, // 1M input tokens @ $1/M = $1.00 exactly
+		{"max_cost_usd one cent over cap fails", 1_010_000, 0, 0, evalspec.Assertions{MaxCostUSD: float64Ptr(1.0)}, true},
+		{"zero caps: zero usage passes", 0, 0, 0, evalspec.Assertions{MaxTokensLoaded: intPtr(0), MaxOutputTokens: intPtr(0)}, false},
+		{"zero cap: any usage fails", 1, 0, 0, evalspec.Assertions{MaxTokensLoaded: intPtr(0)}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgs, _ := checkBudgetAssertions(tt.inputTokens, tt.outputTokens, tt.latencyMs, "m", tt.assert, pricing)
+			gotFail := len(msgs) > 0
+			if gotFail != tt.wantFail {
+				t.Errorf("checkBudgetAssertions() failures = %v, want failed=%v", msgs, tt.wantFail)
+			}
+		})
+	}
+}
+
+// TestCheckBudgetAssertionsNegativeCapsAlwaysFail covers a nonsensical but
+// possible config value (max_tokens_loaded: -1, e.g. a typo'd minus sign)
+// — every real usage count is >= 0, so a negative cap can never be
+// satisfied. Must fail cleanly, not panic or silently pass.
+func TestCheckBudgetAssertionsNegativeCapsAlwaysFail(t *testing.T) {
+	msgs, _ := checkBudgetAssertions(0, 0, 0, "m", evalspec.Assertions{MaxTokensLoaded: intPtr(-1)}, nil)
+	if len(msgs) == 0 {
+		t.Error("checkBudgetAssertions() with a negative cap and zero usage = no failure, want a failure (0 > -1)")
+	}
+}
+
 // sequencedStubServer returns a stub server that replies with texts[i] on
 // the (i+1)th request it receives (1-indexed), and repeats the last entry
 // for any request beyond len(texts) — plus a pointer to the live call
@@ -1424,6 +1474,44 @@ func TestRunCaseFlakeRetriesUnstableTieStrictFails(t *testing.T) {
 	}
 	if result.Passed {
 		t.Error("Passed = true, want false — flake_strict must fail an unresolved tie")
+	}
+}
+
+// TestRunCaseFlakeRetriesMinimalConfirmedFail completes the flake_retries:
+// 1 boundary matrix (2 total attempts) — the tie case is already covered
+// by TestRunCaseFlakeRetriesUnstableTieNonStrictInformationalOnly/Strict;
+// this is the other reachable outcome, both attempts failing.
+// confirmed_pass is mathematically unreachable at N=1 (attempt 1 is
+// already a known failure, so passes can never exceed fails across only 2
+// total attempts) — not a gap, an inherent consequence of the "majority
+// across all attempts including the first" design, so there's no
+// confirmed_pass case to add here.
+func TestRunCaseFlakeRetriesMinimalConfirmedFail(t *testing.T) {
+	srv, callCount := sequencedStubServer(t, []string{
+		"SKILLCI_TRIGGERED: false",
+		"SKILLCI_TRIGGERED: false",
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "flake-case",
+		Prompt: "review this",
+		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1)},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FlakeVerdict != "confirmed_fail" {
+		t.Errorf("FlakeVerdict = %q, want confirmed_fail", result.FlakeVerdict)
+	}
+	if result.Passed {
+		t.Error("Passed = true, want false")
+	}
+	if *callCount != 2 {
+		t.Errorf("callCount = %d, want exactly 2 (attempt 1 + the single flake_retries: 1 retry)", *callCount)
 	}
 }
 
