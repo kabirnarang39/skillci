@@ -76,6 +76,23 @@ go install github.com/kabirnarang39/skillci/cmd/skillci@v0.3.1
 
 An `ANTHROPIC_API_KEY` is needed for `eval`/`regress` (not for `check`, which is local-only and free).
 
+**Shell completion:** `skillci` is built on [cobra](https://github.com/spf13/cobra), so `bash`, `zsh`, `fish`, and `powershell` completion scripts are generated for free — no extra install.
+
+```bash
+# bash (current shell)
+source <(skillci completion bash)
+# bash (persist across shells)
+skillci completion bash > /etc/bash_completion.d/skillci
+
+# zsh (persist across shells — run once)
+skillci completion zsh > "${fpath[1]}/_skillci"
+
+# fish (persist across shells)
+skillci completion fish > ~/.config/fish/completions/skillci.fish
+```
+
+Run `skillci completion --help` for the full per-shell instructions (including oh-my-zsh setups).
+
 ## Quick start
 
 ```bash
