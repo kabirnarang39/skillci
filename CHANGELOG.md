@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.3.3] — 2026-07-26
+
 ### Added
 - `flake_always_sample`: votes on `flake_retries` every case, not just
   ones whose first attempt already failed — closes the blind spot where
