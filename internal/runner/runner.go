@@ -257,6 +257,13 @@ If, given the user's message, you would invoke this skill, begin your response w
 			// defensively rather than treating empty as "isolated" by
 			// accident of groupJudgeCriteria's own default branch.
 			effectiveMode = "batched"
+		} else if effectiveMode != "batched" && effectiveMode != "isolated" {
+			// The global judge_mode is validated at config.Load time, but
+			// a case's own assert.judge_mode override never went through
+			// Load — without this, a typo here would fall through
+			// groupJudgeCriteria's unrecognized-value branch and silently
+			// run as "batched" instead of failing loud.
+			return Result{}, fmt.Errorf("case %q has judge_mode: %q, which is not a recognized value — must be one of \"batched\", \"isolated\"", c.Name, effectiveMode)
 		}
 		samples := 1
 		if c.Assert.JudgeSamples != nil && *c.Assert.JudgeSamples > 0 {

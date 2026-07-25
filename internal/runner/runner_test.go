@@ -1757,6 +1757,41 @@ func TestRunCaseJudgeMissingJudgeModelErrors(t *testing.T) {
 	}
 }
 
+// TestRunCaseJudgeInvalidJudgeModeErrors covers the case-level
+// assert.judge_mode override: unlike the global judge_mode (validated at
+// config.Load time), a per-case override had no value validation at
+// all — a typo like "isloated" fell through groupJudgeCriteria's
+// unrecognized-value branch and silently ran as "batched". This must
+// error instead, naming both the case and the bad value.
+func TestRunCaseJudgeInvalidJudgeModeErrors(t *testing.T) {
+	srv, _ := judgeStubServer(t,
+		"SKILLCI_TRIGGERED: true\nHi.",
+		"claude-opus-4-8",
+		"SKILLCI_JUDGE: tone = PASS",
+	)
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	badMode := "not-a-real-mode"
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			JudgeMode: &badMode,
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is the response friendly?"}},
+		},
+	}
+
+	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "batched")
+	if err == nil {
+		t.Fatal("RunCase() error = nil, want an error — the case's judge_mode is not a recognized value")
+	}
+	if !strings.Contains(err.Error(), "judge-case") || !strings.Contains(err.Error(), badMode) {
+		t.Errorf("error = %q, want it to mention the case name %q and the invalid value %q", err.Error(), "judge-case", badMode)
+	}
+}
+
 func TestRunCaseJudgeMalformedResponseLineTreatedAsFail(t *testing.T) {
 	// The judge's response only returns a verdict for "tone", never
 	// mentioning "length" at all — the missing criterion must be treated
