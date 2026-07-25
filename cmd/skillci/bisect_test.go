@@ -581,3 +581,37 @@ func TestShortSHALeavesShortStringUnchanged(t *testing.T) {
 		t.Errorf("shortSHA(\"\") = %q, want empty", got)
 	}
 }
+
+// TestBisectCmdErrorsWithNoHistoryAndNoGoodFlag closes a real, previously
+// untested gap: a repo's very first-ever `skillci bisect` call, before
+// any .skillci/history.json exists at all and without an explicit --good
+// SHA. lastPassingSHA has nothing to fall back to in this state — the
+// user-facing error message is what stands between a first-time user and
+// a raw internal error/stack trace, so it's worth asserting on directly
+// rather than just trusting the source comment.
+func TestBisectCmdErrorsWithNoHistoryAndNoGoodFlag(t *testing.T) {
+	dir, shas := setupBisectRepo(t)
+	srv := bisectStubServer(t)
+	defer srv.Close()
+
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+	t.Setenv("SKILLCI_BASE_URL", srv.URL)
+
+	// Deliberately no history.json written anywhere under dir/.skillci —
+	// this is what a genuinely first-ever bisect call looks like.
+	cmd := newBisectCmd()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"haiku-case", "--path", dir, "--bad", shas[3]})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatalf("Execute() error = nil, want an error guiding the user to --good; output = %s", out.String())
+	}
+	if !strings.Contains(err.Error(), "--good") {
+		t.Errorf("error = %q, want it to mention --good so a first-time user knows what to supply", err.Error())
+	}
+	if !strings.Contains(err.Error(), "haiku-case") {
+		t.Errorf("error = %q, want it to name the case %q", err.Error(), "haiku-case")
+	}
+}
