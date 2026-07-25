@@ -93,7 +93,7 @@ func (r MatrixReport) ShouldFailCI(failOn string) bool {
 // task's header). It returns the report plus the history.Run that the
 // caller should append and save.
 func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, cfg config.Config, cases []evalspec.Case, hist history.History) (MatrixReport, history.Run, error) {
-	lastRun, hadHistory := hist.LastRun()
+	lastRun, _ := hist.LastRun()
 
 	var report MatrixReport
 	newRun := history.Run{}
@@ -135,7 +135,6 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 					})
 				}
 			}
-			_ = hadHistory
 
 			report.Outcomes = append(report.Outcomes, Outcome{
 				Case: c, Model: model, Result: result, IsNewRegression: isNewRegression,
