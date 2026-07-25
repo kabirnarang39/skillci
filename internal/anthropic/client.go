@@ -155,7 +155,7 @@ func (c *Client) sendOnce(ctx context.Context, body []byte) (msg Message, retrya
 	if err != nil {
 		return Message{}, true, err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // closing a response body we only read from; nothing meaningful to do with a close error here
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {

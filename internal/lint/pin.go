@@ -99,7 +99,7 @@ func verifyOnePinnedSource(ctx context.Context, client *http.Client, skillPath s
 		return &Issue{File: skillPath, Line: 1, Rule: "ast02-pinned-source-unreachable",
 			Msg: fmt.Sprintf("pinned source %q could not be fetched: %v", url, err)}
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // closing a response body we only read from; nothing meaningful to do with a close error here
 
 	if resp.StatusCode != http.StatusOK {
 		return &Issue{File: skillPath, Line: 1, Rule: "ast02-pinned-source-unreachable",
@@ -167,6 +167,6 @@ func safeDialContext(ctx context.Context, network, addr string) (net.Conn, error
 }
 
 func isPublicPinnedSourceIP(ip net.IP) bool {
-	return !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
-		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast())
+	return !ip.IsLoopback() && !ip.IsPrivate() && !ip.IsLinkLocalUnicast() &&
+		!ip.IsLinkLocalMulticast() && !ip.IsUnspecified() && !ip.IsMulticast()
 }

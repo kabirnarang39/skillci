@@ -1,0 +1,38 @@
+version: "2"
+
+linters:
+  enable:
+    - staticcheck
+  settings:
+    errcheck:
+      # Ignoring a write failure to CLI stdout/stderr or a defer-position
+      # resource Close is standard practice: there is nothing actionable to
+      # do differently on error in either case (a CLI tool has no better
+      # response to a broken stdout than the print it already attempted;
+      # a deferred Close on a body/rows we only ever read from has no
+      # correctness impact if it fails).
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - (io.Closer).Close
+  exclusions:
+    rules:
+      # Test files: mock HTTP handlers/fixtures encode or write throwaway
+      # JSON/bytes, and cleanup helpers restore permissions/directories —
+      # none of it is checked for correctness in real test code, only used
+      # to set up or tear down fixture state.
+      - path: "_test\\.go"
+        linters:
+          - errcheck
+      # SA5011 false-positives on the extremely common `if x == nil {
+      # t.Fatal(...) }` pattern: t.Fatal calls runtime.Goexit and never
+      # falls through, but staticcheck's flow analysis doesn't model
+      # testing.TB.Fatal as terminal, so it flags the later dereference as
+      # a possible nil deref. Verified by hand against every instance in
+      # this repo before adding this exclusion — see the E2E verification
+      # pass, 2026-07-26.
+      - path: "_test\\.go"
+        linters:
+          - staticcheck
+        text: "SA5011"

@@ -49,7 +49,7 @@ func Send(ctx context.Context, dashboardURL, token string, r Result) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // closing a response body we only read from; nothing meaningful to do with a close error here
 
 	if resp.StatusCode != http.StatusCreated {
 		return fmt.Errorf("dashboard upload failed with status %d", resp.StatusCode)

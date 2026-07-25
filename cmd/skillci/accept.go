@@ -23,7 +23,7 @@ func newAcceptCmd() *cobra.Command {
 				if err := snapshot.PromotePending(path, name, model); err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "accepted snapshot change for %s (%s)\n", name, model)
+				fmt.Fprintf(cmd.OutOrStdout(), "accepted snapshot change for %s (%s)\n", name, model) //nolint:errcheck // CLI status line to stdout; a write failure here has no meaningful recovery
 				return nil
 			}
 
@@ -40,7 +40,7 @@ func newAcceptCmd() *cobra.Command {
 			if err := os.Remove(src); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "accepted %s -> %s\n", src, dst)
+			fmt.Fprintf(cmd.OutOrStdout(), "accepted %s -> %s\n", src, dst) //nolint:errcheck // CLI status line to stdout; a write failure here has no meaningful recovery
 			return nil
 		},
 	}

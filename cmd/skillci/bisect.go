@@ -170,7 +170,7 @@ func runBisect(out io.Writer, caseName, path, model, good, bad string) error {
 		return result.Passed, nil
 	}
 
-	fmt.Fprintln(out, "verifying good/bad endpoints...")
+	fmt.Fprintln(out, "verifying good/bad endpoints...") //nolint:errcheck // CLI status line to stdout; a write failure here has no meaningful recovery
 	badPassed, err := test(badSHA)
 	if err != nil {
 		return err
@@ -233,14 +233,14 @@ func runBisect(out io.Writer, caseName, path, model, good, bad string) error {
 			// more than one transition if the history genuinely
 			// has disjoint culprits.
 			fmt.Fprintf(out, "%d candidate commits — merge commit(s) detected in this range, scanning all of them linearly for correctness\n", len(changed))
-			fmt.Fprintln(out, "bisecting...")
+			fmt.Fprintln(out, "bisecting...") //nolint:errcheck // CLI status line to stdout; a write failure here has no meaningful recovery
 			culprit, additionalCulprits, err = bisect.SearchLinear(changed, cachedTest)
 			if err != nil {
 				return err
 			}
 		} else {
 			fmt.Fprintf(out, "%d candidate commits, up to %d more API calls\n", len(changed), int(math.Ceil(math.Log2(float64(len(changed)+1)))))
-			fmt.Fprintln(out, "bisecting...")
+			fmt.Fprintln(out, "bisecting...") //nolint:errcheck // CLI status line to stdout; a write failure here has no meaningful recovery
 			culprit, err = bisect.Search(changed, cachedTest)
 			if err != nil {
 				return err

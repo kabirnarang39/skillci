@@ -50,7 +50,7 @@ func (s *Store) SkillHistory(ctx context.Context, owner, repo, skill string) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // closing a query result set we only read from; nothing meaningful to do with a close error here
 
 	var out []IngestedResult
 	for rows.Next() {
@@ -91,7 +91,7 @@ func (s *Store) LatestDimensionResults(ctx context.Context, owner, repo, skill s
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // closing a query result set we only read from; nothing meaningful to do with a close error here
 
 	var out []DimensionResult
 	for rows.Next() {
@@ -132,7 +132,7 @@ func (s *Store) Leaderboard(ctx context.Context) ([]LeaderboardEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer rows.Close() //nolint:errcheck // closing a query result set we only read from; nothing meaningful to do with a close error here
 
 	var out []LeaderboardEntry
 	for rows.Next() {
