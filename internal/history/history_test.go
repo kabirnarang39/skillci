@@ -1,10 +1,47 @@
 package history
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
+
+// TestLoadCorruptJSONReturnsError covers a history.json that exists but
+// isn't valid JSON — a real, plausible scenario for a git-committed file:
+// an unresolved merge conflict left in it, or a write truncated by a
+// killed process. Previously untested; only the "file doesn't exist" and
+// "valid JSON" branches had coverage.
+func TestLoadCorruptJSONReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	if err := os.WriteFile(path, []byte("<<<<<<< HEAD\nnot json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Error("Load() error = nil, want an error for corrupt JSON content")
+	}
+}
+
+// TestSaveToUnwritableDirectoryReturnsError covers os.WriteFile itself
+// failing — previously untested; every existing Save test wrote to a
+// normal writable temp dir. Skipped on Windows, where chmod-based
+// read-only directories don't block writes the same way.
+func TestSaveToUnwritableDirectoryReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions don't block writes the same way on Windows")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0o755)
+
+	h := History{}
+	if err := h.Save(filepath.Join(dir, "history.json")); err == nil {
+		t.Error("Save() error = nil, want an error writing to a read-only directory")
+	}
+}
 
 func TestLoadMissingFile(t *testing.T) {
 	h, err := Load(filepath.Join(t.TempDir(), ".skillci", "history.json"))

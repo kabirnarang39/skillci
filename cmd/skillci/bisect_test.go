@@ -529,3 +529,55 @@ func TestBisectCmdHandlesMergeCommitHistory(t *testing.T) {
 		t.Errorf("output = %q, want a warning that the history is non-linear (a second pass-to-fail transition exists at the merge commit)", output)
 	}
 }
+
+// TestResolveBadSHAFallsBackToHEADWhenNoHistory covers resolveBadSHA's
+// second branch — no recorded history at all (or the last run has no
+// CommitSHA) — previously untested; every existing bisect test that
+// exercises auto-resolution seeds a real history.json first.
+func TestResolveBadSHAFallsBackToHEADWhenNoHistory(t *testing.T) {
+	dir, shas := setupBisectRepo(t)
+
+	got, err := resolveBadSHA(history.History{}, dir)
+	if err != nil {
+		t.Fatalf("resolveBadSHA() error = %v", err)
+	}
+	want := shas[len(shas)-1]
+	if got != want {
+		t.Errorf("resolveBadSHA() = %s, want current HEAD %s", got, want)
+	}
+}
+
+// TestResolveBadSHAUsesLastRunCommitWhenPresent is the branch's
+// complement — a real history.Run with a CommitSHA set must win over the
+// HEAD fallback.
+func TestResolveBadSHAUsesLastRunCommitWhenPresent(t *testing.T) {
+	dir, _ := setupBisectRepo(t)
+	h := history.History{}
+	h.Append(history.Run{CommitSHA: "recorded-sha"})
+
+	got, err := resolveBadSHA(h, dir)
+	if err != nil {
+		t.Fatalf("resolveBadSHA() error = %v", err)
+	}
+	if got != "recorded-sha" {
+		t.Errorf("resolveBadSHA() = %s, want the last run's recorded commit_sha", got)
+	}
+}
+
+func TestShortSHATruncatesLongSHA(t *testing.T) {
+	if got := shortSHA("d7a44229c6fc4462ceb9741b72185eaec95384e6"); got != "d7a4422" {
+		t.Errorf("shortSHA() = %q, want 7-char prefix %q", got, "d7a4422")
+	}
+}
+
+// TestShortSHALeavesShortStringUnchanged covers the pass-through branch —
+// a string at or under 7 chars (an already-abbreviated SHA, or any other
+// short string) is returned as-is, not truncated further or padded.
+func TestShortSHALeavesShortStringUnchanged(t *testing.T) {
+	if got := shortSHA("abc123"); got != "abc123" {
+		t.Errorf("shortSHA() = %q, want unchanged %q", got, "abc123")
+	}
+	if got := shortSHA(""); got != "" {
+		t.Errorf("shortSHA(\"\") = %q, want empty", got)
+	}
+}

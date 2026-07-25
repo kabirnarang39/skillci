@@ -3,8 +3,32 @@ package snapshot
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+// TestSaveToUnwritableDirectoryReturnsError covers writeCreatingParents'
+// os.WriteFile itself failing — previously untested; every existing Save
+// test wrote to a normal writable temp dir. Skipped on Windows, where
+// chmod-based read-only directories don't block writes the same way.
+func TestSaveToUnwritableDirectoryReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions don't block writes the same way on Windows")
+	}
+	dir := t.TempDir()
+	evalsDir := filepath.Join(dir, "evals")
+	if err := os.MkdirAll(evalsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(evalsDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(evalsDir, 0o755)
+
+	if err := Save(dir, "my-case", "claude-sonnet-5", "golden text"); err == nil {
+		t.Error("Save() error = nil, want an error writing to a read-only evals/ directory")
+	}
+}
 
 func TestLoadMissingGolden(t *testing.T) {
 	dir := t.TempDir()

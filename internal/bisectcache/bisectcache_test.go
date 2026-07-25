@@ -1,9 +1,43 @@
 package bisectcache
 
 import (
+	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
+
+// TestLoadCorruptJSONReturnsError covers a bisect-cache.json that exists
+// but isn't valid JSON — a plausible scenario for a git-committed file
+// (unresolved merge conflict, truncated write). Previously untested.
+func TestLoadCorruptJSONReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bisect-cache.json")
+	if err := os.WriteFile(path, []byte("<<<<<<< HEAD\nnot json\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil {
+		t.Error("Load() error = nil, want an error for corrupt JSON content")
+	}
+}
+
+// TestSaveToUnwritableDirectoryReturnsError covers os.WriteFile itself
+// failing. Skipped on Windows, where chmod-based read-only directories
+// don't block writes the same way.
+func TestSaveToUnwritableDirectoryReturnsError(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions don't block writes the same way on Windows")
+	}
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(dir, 0o755)
+
+	c := Cache{}
+	if err := c.Save(filepath.Join(dir, "bisect-cache.json")); err == nil {
+		t.Error("Save() error = nil, want an error writing to a read-only directory")
+	}
+}
 
 func TestLoadMissingFileReturnsEmptyCache(t *testing.T) {
 	c, err := Load(filepath.Join(t.TempDir(), "bisect-cache.json"))

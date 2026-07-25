@@ -90,6 +90,47 @@ func TestLeaderboardPageRenders(t *testing.T) {
 	}
 }
 
+// TestLeaderboardPageDatabaseErrorReturns500 covers leaderboardHandler's
+// error path when the query itself fails — previously untested; every
+// other test only exercises the success path. Forces a real query
+// failure by closing the store's underlying connection first, rather than
+// asserting on the error branch's existence without ever actually hitting
+// it.
+func TestLeaderboardPageDatabaseErrorReturns500(t *testing.T) {
+	store := requireTestStore(t)
+	if err := store.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when the database query fails", rec.Code)
+	}
+}
+
+// TestSkillPageDatabaseErrorReturns500 is skillPageHandler's equivalent —
+// its first query (SkillHistory) failing must also surface as a 500, not
+// a panic or a misleading 404.
+func TestSkillPageDatabaseErrorReturns500(t *testing.T) {
+	store := requireTestStore(t)
+	if err := store.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	mux := NewServer(store, []TokenScope{{Token: "secret-token"}})
+	req := httptest.NewRequest(http.MethodGet, "/s/some-owner/some-repo/some-skill", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500 when the database query fails", rec.Code)
+	}
+}
+
 func TestSkillPageRendersDimensionBreakdown(t *testing.T) {
 	url := os.Getenv("SKILLCI_TEST_DATABASE_URL")
 	if url == "" {

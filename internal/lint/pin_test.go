@@ -212,6 +212,61 @@ func TestVerifyPinnedSourcesFlagsOversizedResponse(t *testing.T) {
 	}
 }
 
+// TestIsPublicPinnedSourceIP directly exercises the SSRF guard's actual
+// decision function — previously only ever hit indirectly, through one
+// integration test blocking a single loopback address. Covers every
+// non-public category the guard is supposed to block (not just loopback),
+// including 169.254.169.254 specifically: the real-world AWS/GCP/Azure
+// cloud metadata endpoint this guard exists to protect against, and a
+// case proving a genuine public address is allowed through — the "happy
+// path" no other test exercises at all, since every existing test either
+// hits a blocked address or swaps the dialer out entirely.
+func TestIsPublicPinnedSourceIP(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want bool
+	}{
+		{"public IPv4", "93.184.216.34", true},
+		{"public IPv6", "2606:2800:220:1:248:1893:25c8:1946", true},
+		{"loopback IPv4", "127.0.0.1", false},
+		{"loopback IPv6", "::1", false},
+		{"private IPv4 class A", "10.0.0.1", false},
+		{"private IPv4 class B", "172.16.0.1", false},
+		{"private IPv4 class C", "192.168.1.1", false},
+		{"private IPv6 ULA", "fc00::1", false},
+		{"link-local IPv4 (cloud metadata endpoint)", "169.254.169.254", false},
+		{"link-local IPv6", "fe80::1", false},
+		{"unspecified IPv4", "0.0.0.0", false},
+		{"unspecified IPv6", "::", false},
+		{"multicast IPv4", "224.0.0.1", false},
+		{"multicast IPv6", "ff02::1", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := net.ParseIP(tt.ip)
+			if ip == nil {
+				t.Fatalf("net.ParseIP(%q) = nil", tt.ip)
+			}
+			if got := isPublicPinnedSourceIP(ip); got != tt.want {
+				t.Errorf("isPublicPinnedSourceIP(%s) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSafeDialContextRejectsUnresolvableHost covers a pinned_sources
+// hostname that doesn't resolve at all (typo, deleted DNS record) —
+// previously untested; every existing unreachable-source test used a raw
+// IP literal, which skips DNS resolution entirely and so never exercised
+// this error path.
+func TestSafeDialContextRejectsUnresolvableHost(t *testing.T) {
+	_, err := safeDialContext(context.Background(), "tcp", "this-host-does-not-resolve.invalid:80")
+	if err == nil {
+		t.Fatal("safeDialContext() error = nil, want an error for an unresolvable host")
+	}
+}
+
 func TestVerifyPinnedSourcesPinnedSourcesDoesNotTriggerUnexpectedFrontmatterField(t *testing.T) {
 	// pinned_sources must be in scanFrontmatterSecurity's allow-list —
 	// this proves the wiring, not VerifyPinnedSources itself.
