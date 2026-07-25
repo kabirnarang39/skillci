@@ -5,3 +5,7 @@ tsconfig.json
 **/*.map
 **/*.test.js
 node_modules/**
+.bin/**
+test-fixtures/**
+out/test/**
+.vscode-test/**
