@@ -26,6 +26,14 @@ func parseTokens() ([]dashboard.TokenScope, error) {
 			if len(tokenAndRepo) != 2 {
 				return nil, fmt.Errorf("SKILLCI_INGEST_TOKENS entry %q is not in token=owner/repo form", entry)
 			}
+			if tokenAndRepo[0] == "" {
+				// An empty token would otherwise be registered as a valid
+				// TokenScope — a request sent with the literal header
+				// "Authorization: Bearer " (empty bearer value) would
+				// match it, a real auth bypass, not just a misconfigured
+				// entry that's merely useless.
+				return nil, fmt.Errorf("SKILLCI_INGEST_TOKENS entry %q has an empty token", entry)
+			}
 			ownerRepo := strings.SplitN(tokenAndRepo[1], "/", 2)
 			if len(ownerRepo) != 2 || ownerRepo[0] == "" || ownerRepo[1] == "" {
 				return nil, fmt.Errorf("SKILLCI_INGEST_TOKENS entry %q has an invalid owner/repo — want owner/repo", entry)

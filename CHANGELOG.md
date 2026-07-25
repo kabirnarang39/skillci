@@ -79,6 +79,14 @@ and this project follows [Semantic Versioning](https://semver.org/).
   API call in that run, not just the one that hit it. A genuine client
   error (e.g. 401 invalid key) still fails on the first attempt, since
   retrying it can never succeed.
+- `skillci-server`'s `SKILLCI_INGEST_TOKENS` parsing now rejects an entry
+  with an empty token (e.g. `=owner/repo`) instead of silently accepting
+  it. Previously undetected — a realistic misconfiguration (a templated
+  env var like `${SECRET}=owner/repo` where `$SECRET` is accidentally
+  unset at deploy time) registered an empty-string token as a valid
+  scope, and a request sent with the literal header `Authorization:
+  Bearer ` (empty bearer value) would match it — a real authentication
+  bypass, not just a useless config entry.
 
 ## [v0.2.0] — 2026-07-24
 

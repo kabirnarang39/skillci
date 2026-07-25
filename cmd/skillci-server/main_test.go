@@ -63,6 +63,23 @@ func TestParseTokensRejectsMalformedEntry(t *testing.T) {
 	}
 }
 
+// TestParseTokensRejectsEmptyToken covers a malformed entry like
+// "=owner/repo" — an empty token before the "=" (a realistic
+// misconfiguration: a templated env var like "${SECRET}=owner/repo" where
+// $SECRET is accidentally unset at deploy time). Without this check, an
+// empty Token gets registered as a valid TokenScope, and a request sent
+// with the literal header "Authorization: Bearer " (empty bearer value)
+// would match it — a real authentication bypass, not just a config
+// warning.
+func TestParseTokensRejectsEmptyToken(t *testing.T) {
+	t.Setenv("SKILLCI_INGEST_TOKENS", "=org-a/repo-a")
+	t.Setenv("SKILLCI_INGEST_TOKEN", "")
+
+	if _, err := parseTokens(); err == nil {
+		t.Fatal("parseTokens() error = nil, want an error for an entry with an empty token")
+	}
+}
+
 func TestParseTokensRejectsMissingOwnerOrRepo(t *testing.T) {
 	t.Setenv("SKILLCI_INGEST_TOKENS", "token-a=justonesegment")
 	t.Setenv("SKILLCI_INGEST_TOKEN", "")
