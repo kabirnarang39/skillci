@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -54,7 +55,11 @@ func ingestHandler(store *Store, tokens []TokenScope) http.HandlerFunc {
 		}
 		var scope *TokenScope
 		for i := range tokens {
-			if tokens[i].Token == presented {
+			// Constant-time: a plain == short-circuits on the first
+			// mismatched byte, turning "how long did the request take"
+			// into a side channel an attacker could use to recover a
+			// valid token byte-by-byte instead of having to guess it whole.
+			if subtle.ConstantTimeCompare([]byte(tokens[i].Token), []byte(presented)) == 1 {
 				scope = &tokens[i]
 				break
 			}

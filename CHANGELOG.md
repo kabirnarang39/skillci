@@ -66,6 +66,11 @@ and this project follows [Semantic Versioning](https://semver.org/).
   a unique key, so a duplicate (an easy mistake: copy an existing case
   file to start a new one, forget to rename it) silently made that lookup
   ambiguous instead of failing loudly at load time.
+- Dashboard ingest token comparison now runs in constant time
+  (`crypto/subtle.ConstantTimeCompare`) instead of a plain `==`, which
+  short-circuits on the first mismatched byte and turns request latency
+  into a side channel an attacker could use to recover a valid token
+  byte-by-byte rather than having to guess it whole.
 
 ## [v0.2.0] — 2026-07-24
 
