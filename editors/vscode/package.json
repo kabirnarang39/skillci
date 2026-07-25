@@ -12,7 +12,9 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Linters"],
+  "categories": [
+    "Linters"
+  ],
   "activationEvents": [
     "workspaceContains:**/SKILL.md"
   ],
@@ -43,11 +45,14 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "tsc -p ./ && node --test out/lintResult.test.js",
+    "pretest:integration": "go build -o .bin/skillci ../../cmd/skillci",
+    "test:integration": "tsc -p ./ && node out/test/runTest.js",
     "package": "npm run compile && vsce package"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.0.0",
     "typescript": "^5.4.0"
   }

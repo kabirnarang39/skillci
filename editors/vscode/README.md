@@ -36,10 +36,22 @@ from a terminal.
 
 ```bash
 npm install
-npm run compile   # or: npm run watch
-npm test          # pure-logic unit tests (node:test, no extension host needed)
-npm run package   # builds a real .vsix via @vscode/vsce
+npm run compile           # or: npm run watch
+npm test                  # pure-logic unit tests (node:test, no extension host needed)
+npm run test:integration  # real end-to-end test: builds skillci fresh, launches a
+                           # real VS Code Extension Development Host, opens a real
+                           # broken SKILL.md fixture, and asserts on the real
+                           # diagnostics the extension publishes
+npm run package            # builds a real .vsix via @vscode/vsce
 ```
+
+`test:integration` downloads an isolated VS Code test build on first run
+(cached under `.vscode-test/`, gitignored) — it never touches your own VS
+Code profile, settings, or installed extensions. It configures
+`skillci.path` at runtime to point at the binary it just built, rather
+than relying on `PATH`: VS Code resolves its own `PATH` from your login
+shell on macOS, which can silently pick up a different, older `skillci`
+install ahead of the one this test just built.
 
 Press F5 in VS Code (with this folder open) to launch an Extension
 Development Host for manual testing.
