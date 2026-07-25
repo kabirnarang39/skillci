@@ -151,6 +151,47 @@ func TestPushRestoresDetachedHEADRatherThanABranch(t *testing.T) {
 	}
 }
 
+// TestPushDoesNotCommitUnrelatedStagedChanges proves Push's commit is
+// scoped to the paths it was given. Without that scoping, plain `git
+// commit` commits the entire index — so any unrelated content a caller
+// happened to have staged before calling Push (e.g. a developer's own
+// in-progress work) would be swept into the auto-generated commit, pushed
+// to a throwaway branch, and included in the pull request --open-pr opens.
+func TestPushDoesNotCommitUnrelatedStagedChanges(t *testing.T) {
+	dir := setupRepoWithRemote(t)
+
+	secretFile := filepath.Join(dir, "unrelated-work-in-progress.txt")
+	if err := os.WriteFile(secretFile, []byte("not meant for this PR"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitT(t, dir, "add", "unrelated-work-in-progress.txt")
+
+	newFile := filepath.Join(dir, "evals", "_generated", "new-case.yaml")
+	if err := os.MkdirAll(filepath.Dir(newFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newFile, []byte("name: new-case\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Push(dir, []string{newFile}, "add generated case", "origin", "skillci/generated-eval-test6"); err != nil {
+		t.Fatalf("Push() error = %v", err)
+	}
+
+	remoteFiles := gitOutput(t, dir, "ls-tree", "-r", "--name-only", "origin/skillci/generated-eval-test6")
+	if strings.Contains(remoteFiles, "unrelated-work-in-progress.txt") {
+		t.Errorf("pushed branch contains unrelated-work-in-progress.txt — Push must only commit the paths it was given, files = %q", remoteFiles)
+	}
+
+	// The unrelated file's staged status locally must also be untouched —
+	// Push restores the original checkout but must not have consumed or
+	// otherwise disturbed content outside the paths it owns.
+	status := gitOutput(t, dir, "status", "--porcelain", "--", "unrelated-work-in-progress.txt")
+	if status != "A  unrelated-work-in-progress.txt" {
+		t.Errorf("unrelated-work-in-progress.txt status after Push() = %q, want still staged (A) and untouched", status)
+	}
+}
+
 func TestPushCreatesUniqueBranchFromCurrentHEAD(t *testing.T) {
 	dir := setupRepoWithRemote(t)
 

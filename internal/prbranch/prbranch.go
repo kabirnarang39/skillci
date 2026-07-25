@@ -48,7 +48,12 @@ func Push(dir string, paths []string, message, remote, branchName string) (err e
 	if _, err := runGit(dir, args...); err != nil {
 		return err
 	}
-	if _, err := runGit(dir, "commit", "-m", message); err != nil {
+	// Scoped to paths deliberately: a plain `git commit` commits the
+	// entire index, so any unrelated content already staged before Push
+	// was called (e.g. a caller's own in-progress work) would otherwise
+	// be swept into this commit and pushed to a throwaway branch.
+	commitArgs := append([]string{"commit", "-m", message, "--"}, paths...)
+	if _, err := runGit(dir, commitArgs...); err != nil {
 		return err
 	}
 	if _, err := runGit(dir, "push", remote, branchName); err != nil {

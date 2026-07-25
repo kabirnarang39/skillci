@@ -23,6 +23,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
   exists on disk is invisible to `git worktree prune`. Every `bisect` run
   now sweeps and removes any orphaned worktree from a prior interrupted
   run before starting.
+- `regress --open-pr`: the generated-eval-case commit is now scoped to the
+  generated file(s) instead of running a bare `git commit`, which commits
+  the entire index — any unrelated content already staged in the working
+  tree before `--open-pr` ran (e.g. a developer's own in-progress work)
+  would otherwise be swept into the commit, pushed to a throwaway branch,
+  and included in the pull request opened on GitHub.
 
 ## [v0.2.0] — 2026-07-24
 
