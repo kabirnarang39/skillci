@@ -51,7 +51,7 @@ func newFuzzCmd() *cobra.Command {
 					continue
 				}
 				ran++
-				result, err := runner.RunCase(context.Background(), client, dir, model, c, cfg.Pricing, cfg.JudgeModel)
+				result, err := runner.RunCase(context.Background(), client, dir, model, c, cfg.Pricing, cfg.JudgeModel, cfg.JudgeMode)
 				if err != nil {
 					return fmt.Errorf("running case %s: %w", c.Name, err)
 				}

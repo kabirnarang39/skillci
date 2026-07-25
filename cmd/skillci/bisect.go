@@ -154,7 +154,7 @@ func runBisect(out io.Writer, caseName, path, model, good, bad string) error {
 				fmt.Fprintf(out, "warning: failed to remove worktree at %s: %v\n", worktreePath, cerr)
 			}
 		}()
-		result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target, cfg.Pricing, cfg.JudgeModel)
+		result, err := runner.RunCase(context.Background(), client, filepath.Join(worktreePath, relPath), model, *target, cfg.Pricing, cfg.JudgeModel, cfg.JudgeMode)
 		if err != nil {
 			return false, err
 		}

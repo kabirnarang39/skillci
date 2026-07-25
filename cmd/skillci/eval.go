@@ -50,7 +50,7 @@ func newEvalCmd() *cobra.Command {
 
 			failed := 0
 			for _, c := range cases {
-				result, err := runner.RunCase(context.Background(), client, dir, model, c, cfg.Pricing, cfg.JudgeModel)
+				result, err := runner.RunCase(context.Background(), client, dir, model, c, cfg.Pricing, cfg.JudgeModel, cfg.JudgeMode)
 				if err != nil {
 					return fmt.Errorf("running case %s: %w", c.Name, err)
 				}

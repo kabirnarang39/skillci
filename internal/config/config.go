@@ -27,6 +27,11 @@ type Config struct {
 	// can't reliably judge itself when it's also the thing that might
 	// have drifted. A case with no Judge criteria doesn't need this set.
 	JudgeModel string `yaml:"judge_model"`
+	// JudgeMode sets the default judge call grouping: "batched" (every
+	// judge criterion in one API call, the existing cost profile) or
+	// "isolated" (one API call per criterion). A case's own
+	// assert.judge_mode overrides this. Unset defaults to "batched".
+	JudgeMode string `yaml:"judge_mode"`
 }
 
 // ModelPricing is one model's per-million-token rates, matching
@@ -48,10 +53,21 @@ var validFailOn = map[string]bool{
 
 const validFailOnList = `"regression", "any_fail", "triggered_only"`
 
+// validJudgeMode is the exact set RunCase's mode-resolution logic
+// (internal/runner) recognizes for both the global judge_mode and a
+// case's own assert.judge_mode override.
+var validJudgeMode = map[string]bool{
+	"batched":  true,
+	"isolated": true,
+}
+
+const validJudgeModeList = `"batched", "isolated"`
+
 func Default() Config {
 	return Config{
-		Models: []string{"claude-sonnet-5"},
-		FailOn: "regression",
+		Models:    []string{"claude-sonnet-5"},
+		FailOn:    "regression",
+		JudgeMode: "batched",
 	}
 }
 
@@ -78,6 +94,12 @@ func Load(path string) (Config, error) {
 	}
 	if _, ok := validFailOn[cfg.FailOn]; !ok {
 		return Config{}, fmt.Errorf("fail_on: %q is not a recognized value — must be one of %s", cfg.FailOn, validFailOnList)
+	}
+	if cfg.JudgeMode == "" {
+		cfg.JudgeMode = "batched"
+	}
+	if !validJudgeMode[cfg.JudgeMode] {
+		return Config{}, fmt.Errorf("judge_mode: %q is not a recognized value — must be one of %s", cfg.JudgeMode, validJudgeModeList)
 	}
 	// Sorted iteration: map order is nondeterministic in Go, and if
 	// multiple pricing entries are invalid at once the error should

@@ -90,6 +90,19 @@ type Assertions struct {
 	// non-strict-by-default pattern as Snapshot/Fuzz/MaxLatencyMs/
 	// FlakeRetries.
 	JudgeStrict *bool `yaml:"judge_strict,omitempty"`
+	// JudgeMode overrides the global judge_mode (see .skillci.yaml) for
+	// this case only: "batched" (every judge criterion in one API call)
+	// or "isolated" (one API call per criterion — full reasoning
+	// isolation, no cross-criterion bleed, at higher cost). Nil means
+	// "use the global default." Meaningless if Judge is not set.
+	JudgeMode *string `yaml:"judge_mode,omitempty"`
+	// JudgeSamples draws this many independent judge-call samples per
+	// criterion group and majority-votes the result, protecting against
+	// the judge model's own sampling variance on a borderline verdict —
+	// the same asymmetry FlakeRetries closes for the case model. Nil
+	// means 1 sample (today's exact behavior: a single call, trusted
+	// directly, no voting). Meaningless if Judge is not set.
+	JudgeSamples *int `yaml:"judge_samples,omitempty"`
 }
 
 // JudgeCriterion is one named rubric item a judge model evaluates a

@@ -238,6 +238,46 @@ func TestLoadJudgeModelDefaultsEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadParsesJudgeMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "models: [claude-sonnet-5]\njudge_mode: isolated\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.JudgeMode != "isolated" {
+		t.Errorf("JudgeMode = %q, want isolated", cfg.JudgeMode)
+	}
+}
+
+func TestLoadJudgeModeDefaultsToBatched(t *testing.T) {
+	cfg, err := Load(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.JudgeMode != "batched" {
+		t.Errorf("JudgeMode = %q, want batched when not configured", cfg.JudgeMode)
+	}
+}
+
+func TestLoadRejectsUnrecognizedJudgeMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "models: [claude-sonnet-5]\njudge_mode: sometimes\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Error("Load() error = nil, want an error for an unrecognized judge_mode value")
+	}
+}
+
 // TestLoadRejectsYAMLAliasBombQuickly covers a "billion laughs"-style YAML
 // alias-expansion attack in .skillci.yaml. yaml.v3 has its own built-in
 // alias-count limit; this locks in that skillci's own error path surfaces

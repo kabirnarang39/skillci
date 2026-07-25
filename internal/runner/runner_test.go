@@ -37,7 +37,7 @@ func TestRunCaseMissingSkillMDErrors(t *testing.T) {
 	dir := t.TempDir()
 	client := anthropic.NewClient("test-key")
 	c := evalspec.Case{Name: "x", Prompt: "hi"}
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err == nil {
 		t.Error("RunCase() error = nil, want error for a missing SKILL.md")
 	}
 }
@@ -51,7 +51,7 @@ func TestRunCaseSkillMDMissingFrontmatterErrors(t *testing.T) {
 	}
 	client := anthropic.NewClient("test-key")
 	c := evalspec.Case{Name: "x", Prompt: "hi"}
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err == nil {
 		t.Error("RunCase() error = nil, want error for SKILL.md with no frontmatter block")
 	}
 }
@@ -65,7 +65,7 @@ func TestRunCaseSkillMDUnclosedFrontmatterErrors(t *testing.T) {
 	}
 	client := anthropic.NewClient("test-key")
 	c := evalspec.Case{Name: "x", Prompt: "hi"}
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err == nil {
 		t.Error("RunCase() error = nil, want error for an unclosed frontmatter block")
 	}
 }
@@ -79,7 +79,7 @@ func TestRunCaseSkillMDInvalidYAMLFrontmatterErrors(t *testing.T) {
 	}
 	client := anthropic.NewClient("test-key")
 	c := evalspec.Case{Name: "x", Prompt: "hi"}
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err == nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err == nil {
 		t.Error("RunCase() error = nil, want error for malformed YAML frontmatter")
 	}
 }
@@ -116,7 +116,7 @@ func TestRunCasePassing(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -142,7 +142,7 @@ func TestRunCaseFailsOnMissingContains(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -163,7 +163,7 @@ func TestRunCaseFailsOnUnexpectedTrigger(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: falsePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -186,7 +186,7 @@ func TestRunCaseFailsOnTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -207,7 +207,7 @@ func TestRunCaseSnapshotFirstRunCapturesGolden(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -239,10 +239,10 @@ func TestRunCaseSnapshotUnchangedPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err != nil {
 		t.Fatalf("first RunCase() error = %v", err)
 	}
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("second RunCase() error = %v", err)
 	}
@@ -270,7 +270,7 @@ func TestRunCaseSnapshotChangedNonStrictStillPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -314,7 +314,7 @@ func TestRunCaseSnapshotRevertingToGoldenClearsStalePending(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr()},
 	}
 
-	if _, err := RunCase(context.Background(), driftedClient, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+	if _, err := RunCase(context.Background(), driftedClient, dir, "claude-sonnet-5", c, nil, "", ""); err != nil {
 		t.Fatalf("RunCase() (drifted run) error = %v", err)
 	}
 	if _, ok, err := snapshot.LoadPending(dir, "snap-case", "claude-sonnet-5"); err != nil || !ok {
@@ -325,7 +325,7 @@ func TestRunCaseSnapshotRevertingToGoldenClearsStalePending(t *testing.T) {
 	defer revertedSrv.Close()
 	revertedClient := anthropic.NewClient("test-key").WithBaseURL(revertedSrv.URL)
 
-	result, err := RunCase(context.Background(), revertedClient, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), revertedClient, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() (reverted run) error = %v", err)
 	}
@@ -353,7 +353,7 @@ func TestRunCaseSnapshotChangedStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Snapshot: truePtr(), SnapshotStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -381,7 +381,7 @@ func TestRunCaseSnapshotSkippedWhenOtherAssertionFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -420,7 +420,7 @@ func TestRunCaseSnapshotNotEnabledNoDiffField(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -464,7 +464,7 @@ func TestRunCaseFuzzFlippedNonStrictStillPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -522,7 +522,7 @@ func TestRunCaseFuzzLLMGeneratesAndTestsParaphrases(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzLLM: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -579,14 +579,14 @@ func TestRunCaseFuzzLLMReusesCachedParaphrasesAcrossInvocations(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzLLM: truePtr()},
 	}
 
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err != nil {
 		t.Fatalf("first RunCase() error = %v", err)
 	}
 	if got := generationCalls.Load(); got != 1 {
 		t.Fatalf("generation calls after first run = %d, want 1", got)
 	}
 
-	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, ""); err != nil {
+	if _, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", ""); err != nil {
 		t.Fatalf("second RunCase() error = %v", err)
 	}
 	if got := generationCalls.Load(); got != 1 {
@@ -624,7 +624,7 @@ func TestRunCaseFuzzFlippedStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -645,7 +645,7 @@ func TestRunCaseFuzzSkippedWhenOtherAssertionFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -669,7 +669,7 @@ func TestRunCaseFuzzNotEnabledNoFindings(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -690,7 +690,7 @@ func TestRunCaseFuzzSkippedWithoutTriggeredAssertion(t *testing.T) {
 		Assert: evalspec.Assertions{Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -736,7 +736,7 @@ func TestRunCaseSnapshotAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), Snapshot: truePtr(), Fuzz: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -813,7 +813,7 @@ func TestRunCaseJudgeAndFuzzBothEnabledProduceBothArtifacts(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -873,7 +873,7 @@ func TestRunCaseJudgeSkippedWhenFuzzStrictFlips(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -921,7 +921,7 @@ func TestRunCaseJudgeAndSnapshotBothEnabledProduceBothArtifacts(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -979,7 +979,7 @@ func TestRunCaseFailsOnOutputTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1005,7 +1005,7 @@ func TestRunCasePassesUnderOutputTokenBudget(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1029,7 +1029,7 @@ func TestRunCaseOutputTokensAlwaysPopulated(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1055,7 +1055,7 @@ func TestRunCaseLatencyNonStrictInformationalOnly(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1082,7 +1082,7 @@ func TestRunCaseLatencyStrictFails(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1105,7 +1105,7 @@ func TestRunCaseLatencyNotExceededWhenUnderCap(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1132,7 +1132,7 @@ func TestRunCaseFailsOnCostBudget(t *testing.T) {
 	}
 
 	// 1M input tokens * $3/M + 1M output tokens * $15/M = $18, exceeds $1 cap.
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1158,7 +1158,7 @@ func TestRunCasePassesUnderCostBudget(t *testing.T) {
 		"claude-sonnet-5": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, pricing, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1182,7 +1182,7 @@ func TestRunCaseFailsHardOnMissingPricingForCostAssertion(t *testing.T) {
 	}
 
 	// pricing is nil — no entry for claude-sonnet-5 at all.
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1290,7 +1290,7 @@ func TestRunCaseFlakeRetriesConfirmedPassAfterInitialFailure(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1329,7 +1329,7 @@ func TestRunCaseFlakeRetriesConfirmedPassSkipsSnapshot(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2), Snapshot: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1373,7 +1373,7 @@ func TestRunCaseFlakeRetriesConfirmedFail(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1409,7 +1409,7 @@ func TestRunCaseFlakeRetriesEarlyStopsOnDecidedMajority(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(4)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1439,7 +1439,7 @@ func TestRunCaseFlakeRetriesUnstableTieNonStrictInformationalOnly(t *testing.T) 
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1465,7 +1465,7 @@ func TestRunCaseFlakeRetriesUnstableTieStrictFails(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1), FlakeStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1500,7 +1500,7 @@ func TestRunCaseFlakeRetriesMinimalConfirmedFail(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(1)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1529,7 +1529,7 @@ func TestRunCaseFlakeRetriesNotTriggeredWhenFirstAttemptPasses(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1561,7 +1561,7 @@ func TestRunCaseFlakeStrictAloneWithoutFlakeRetriesIsInert(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeStrict: truePtr()},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1590,7 +1590,7 @@ func TestRunCaseFlakeRetriesExplicitZeroBehavesLikeUnset(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), FlakeRetries: intPtr(0)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1656,7 +1656,7 @@ func TestRunCaseJudgeAllCriteriaPass(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1691,7 +1691,7 @@ func TestRunCaseJudgeFailureNonStrictStillPasses(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1725,7 +1725,7 @@ func TestRunCaseJudgeFailureStrictFails(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1748,7 +1748,7 @@ func TestRunCaseJudgeMissingJudgeModelErrors(t *testing.T) {
 		},
 	}
 
-	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err == nil {
 		t.Fatal("RunCase() error = nil, want an error — case uses judge criteria but no judge_model was passed")
 	}
@@ -1781,7 +1781,7 @@ func TestRunCaseJudgeMalformedResponseLineTreatedAsFail(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1835,7 +1835,7 @@ func TestRunCaseJudgeSkippedWhenFlakeRetriesFired(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1870,7 +1870,7 @@ func TestRunCaseJudgeSkippedWhenOtherAssertionFails(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1900,7 +1900,7 @@ func TestRunCaseJudgeUsesSeparateModelFromCaseModel(t *testing.T) {
 		},
 	}
 
-	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1939,7 +1939,7 @@ func TestRunCaseJudgeReasoningCapturedForPassingCriterion(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -1976,7 +1976,7 @@ func TestRunCaseJudgeReasoningOverridesGenericFailReason(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -2013,7 +2013,7 @@ func TestRunCaseJudgeExplicitFailReasonWinsOverReasoningLine(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -2044,7 +2044,7 @@ func TestRunCaseJudgeMissingReasoningLineStillParsesVerdict(t *testing.T) {
 		},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -2069,7 +2069,7 @@ func TestRunCaseFlakeRetriesNeverAppliesToBudgetAssertions(t *testing.T) {
 		Assert: evalspec.Assertions{Triggered: truePtr(), MaxTokensLoaded: intPtr(10), FlakeRetries: intPtr(2)},
 	}
 
-	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "")
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "", "")
 	if err != nil {
 		t.Fatalf("RunCase() error = %v", err)
 	}
@@ -2120,5 +2120,159 @@ func TestParseTriggerMarkerFalseWithTrailingContentIsPreservedAsContent(t *testi
 	}
 	if !strings.Contains(content, "I would not use this skill because the request is unrelated.") {
 		t.Errorf("content = %q, want the model's trailing explanation preserved", content)
+	}
+}
+
+// TestRunCaseJudgeBatchedModeMakesOneCallForMultipleCriteria proves the
+// default ("batched", or empty string resolving to it) puts every
+// criterion into a single judge API call, regardless of criteria count.
+func TestRunCaseJudgeBatchedModeMakesOneCallForMultipleCriteria(t *testing.T) {
+	judgeCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nHi!"
+		if req.Model == "claude-opus-4-8" {
+			judgeCalls++
+			text = "SKILLCI_JUDGE: tone = PASS\nSKILLCI_JUDGE: length = PASS"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is it friendly?"},
+				{Name: "length", Criterion: "Is it short?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "batched")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if judgeCalls != 1 {
+		t.Errorf("judgeCalls = %d, want 1 for batched mode with 2 criteria", judgeCalls)
+	}
+	if len(result.JudgeFindings) != 2 {
+		t.Errorf("JudgeFindings = %+v, want 2 findings", result.JudgeFindings)
+	}
+}
+
+// TestRunCaseJudgeIsolatedModeMakesOneCallPerCriterion proves "isolated"
+// mode makes one judge API call per criterion — full reasoning
+// isolation, no cross-criterion bleed within a single call.
+func TestRunCaseJudgeIsolatedModeMakesOneCallPerCriterion(t *testing.T) {
+	judgeCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nHi!"
+		if req.Model == "claude-opus-4-8" {
+			judgeCalls++
+			// Reply with a verdict for whichever single criterion this
+			// call's group contains — both tone-only and length-only
+			// calls get a PASS either way, since this test only cares
+			// about call count, not per-criterion outcomes.
+			text = "SKILLCI_JUDGE: tone = PASS\nSKILLCI_JUDGE: length = PASS"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is it friendly?"},
+				{Name: "length", Criterion: "Is it short?"},
+			},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "isolated")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if judgeCalls != 2 {
+		t.Errorf("judgeCalls = %d, want 2 for isolated mode with 2 criteria", judgeCalls)
+	}
+	if len(result.JudgeFindings) != 2 {
+		t.Errorf("JudgeFindings = %+v, want 2 findings", result.JudgeFindings)
+	}
+}
+
+// TestRunCaseJudgeModePerCaseOverridesGlobal proves a case's own
+// assert.judge_mode wins over the global default passed into RunCase.
+func TestRunCaseJudgeModePerCaseOverridesGlobal(t *testing.T) {
+	judgeCalls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nHi!"
+		if req.Model == "claude-opus-4-8" {
+			judgeCalls++
+			text = "SKILLCI_JUDGE: tone = PASS\nSKILLCI_JUDGE: length = PASS"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	isolated := "isolated"
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			JudgeMode: &isolated,
+			Judge: []evalspec.JudgeCriterion{
+				{Name: "tone", Criterion: "Is it friendly?"},
+				{Name: "length", Criterion: "Is it short?"},
+			},
+		},
+	}
+
+	// Global mode passed in is "batched" — the case's own "isolated"
+	// override must win.
+	_, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "batched")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if judgeCalls != 2 {
+		t.Errorf("judgeCalls = %d, want 2 — the case's judge_mode: isolated must override the global batched default", judgeCalls)
 	}
 }

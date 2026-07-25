@@ -91,7 +91,7 @@ const triggerMarkerPrefix = "SKILLCI_TRIGGERED:"
 // only the skill's name+description (a proxy for progressive-disclosure
 // candidate matching — see Task 7 header note), then checks the response
 // against the case's assertions.
-func RunCase(ctx context.Context, client *anthropic.Client, skillDir, model string, c evalspec.Case, pricing map[string]config.ModelPricing, judgeModel string) (Result, error) {
+func RunCase(ctx context.Context, client *anthropic.Client, skillDir, model string, c evalspec.Case, pricing map[string]config.ModelPricing, judgeModel, judgeMode string) (Result, error) {
 	meta, err := readSkillMeta(skillDir)
 	if err != nil {
 		return Result{}, err
@@ -240,9 +240,25 @@ If, given the user's message, you would invoke this skill, begin your response w
 		if judgeModel == "" {
 			return Result{}, fmt.Errorf("case %q uses judge criteria but no judge_model is configured — add judge_model: to .skillci.yaml", c.Name)
 		}
-		findings, jerr := runJudge(ctx, client, judgeModel, content, c.Assert.Judge)
-		if jerr != nil {
-			return Result{}, jerr
+		effectiveMode := judgeMode
+		if c.Assert.JudgeMode != nil {
+			effectiveMode = *c.Assert.JudgeMode
+		}
+		if effectiveMode == "" {
+			// A Config{} built directly (not via config.Load, which
+			// defaults this to "batched") leaves this empty — fall back
+			// defensively rather than treating empty as "isolated" by
+			// accident of groupJudgeCriteria's own default branch.
+			effectiveMode = "batched"
+		}
+		groups := groupJudgeCriteria(effectiveMode, c.Assert.Judge)
+		var findings []JudgeFinding
+		for _, group := range groups {
+			groupFindings, jerr := runJudgeGroup(ctx, client, judgeModel, content, group)
+			if jerr != nil {
+				return Result{}, jerr
+			}
+			findings = append(findings, groupFindings...)
 		}
 		result.JudgeFindings = findings
 		failed := 0
@@ -262,10 +278,32 @@ If, given the user's message, you would invoke this skill, begin your response w
 
 const judgeMarkerPrefix = "SKILLCI_JUDGE:"
 
-// runJudge sends every criterion together in one prompt to judgeModel and
-// parses its structured per-criterion verdict lines — exactly one API
-// call regardless of how many criteria are configured.
-func runJudge(ctx context.Context, client *anthropic.Client, judgeModel, response string, criteria []evalspec.JudgeCriterion) ([]JudgeFinding, error) {
+// groupJudgeCriteria splits criteria into the API-call groups mode
+// dictates. "batched" (or any unrecognized value, defensively — the
+// only validated values are "batched"/"isolated", checked at
+// config.Load and at the call site in RunCase, but a Config{} built
+// directly by a test bypasses Load's validation, so this function falls
+// back to the safe/cheap default rather than panicking on a stray
+// value) puts every criterion into one group. "isolated" puts each
+// criterion into its own single-element group.
+func groupJudgeCriteria(mode string, criteria []evalspec.JudgeCriterion) [][]evalspec.JudgeCriterion {
+	if mode == "isolated" {
+		groups := make([][]evalspec.JudgeCriterion, len(criteria))
+		for i, c := range criteria {
+			groups[i] = []evalspec.JudgeCriterion{c}
+		}
+		return groups
+	}
+	return [][]evalspec.JudgeCriterion{criteria}
+}
+
+// runJudgeGroup sends every criterion in group together in one judge API
+// call and parses their verdicts — exactly one API call regardless of
+// how many criteria are in group. Called once per group produced by
+// groupJudgeCriteria: in "batched" mode there's one group containing
+// every one of a case's criteria; in "isolated" mode there's one
+// single-criterion group per criterion.
+func runJudgeGroup(ctx context.Context, client *anthropic.Client, judgeModel, response string, group []evalspec.JudgeCriterion) ([]JudgeFinding, error) {
 	systemPrompt := `You are an impartial judge evaluating an AI assistant's response against a list of criteria. For each criterion, first reason step by step about whether the response satisfies it, then give a verdict. Respond with exactly two lines per criterion, in this order:
 
 SKILLCI_JUDGE_REASONING: <criterion name>: <your step-by-step reasoning>
@@ -278,7 +316,7 @@ Output nothing else — no preamble, no summary, just the reasoning and verdict 
 
 	var userPrompt strings.Builder
 	userPrompt.WriteString("Criteria:\n")
-	for _, c := range criteria {
+	for _, c := range group {
 		fmt.Fprintf(&userPrompt, "- %s: %s\n", c.Name, c.Criterion)
 	}
 	userPrompt.WriteString("\nResponse to evaluate:\n")
@@ -288,7 +326,7 @@ Output nothing else — no preamble, no summary, just the reasoning and verdict 
 	if err != nil {
 		return nil, err
 	}
-	return parseJudgeVerdicts(msg.Text, criteria), nil
+	return parseJudgeVerdicts(msg.Text, group), nil
 }
 
 const judgeReasoningPrefix = "SKILLCI_JUDGE_REASONING:"

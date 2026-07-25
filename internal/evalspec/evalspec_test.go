@@ -343,6 +343,50 @@ func TestLoadDirJudgeFieldsDefaultNil(t *testing.T) {
 	}
 }
 
+func TestLoadDirParsesJudgeModeAndSamples(t *testing.T) {
+	dir := t.TempDir()
+	content := `name: judge-case
+prompt: hi
+assert:
+  triggered: true
+  judge_mode: isolated
+  judge_samples: 3
+  judge:
+    - name: tone
+      criterion: "Is the response friendly?"
+`
+	writeCase(t, dir, "case.yaml", content)
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Assert.JudgeMode == nil || *c.Assert.JudgeMode != "isolated" {
+		t.Errorf("JudgeMode = %v, want \"isolated\"", c.Assert.JudgeMode)
+	}
+	if c.Assert.JudgeSamples == nil || *c.Assert.JudgeSamples != 3 {
+		t.Errorf("JudgeSamples = %v, want 3", c.Assert.JudgeSamples)
+	}
+}
+
+func TestLoadDirJudgeModeAndSamplesDefaultNil(t *testing.T) {
+	dir := t.TempDir()
+	writeCase(t, dir, "plain.yaml", "name: plain-case\nprompt: p\nassert:\n  triggered: true\n")
+
+	cases, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("LoadDir() error = %v", err)
+	}
+	c := cases[0]
+	if c.Assert.JudgeMode != nil {
+		t.Errorf("JudgeMode = %v, want nil when not specified", c.Assert.JudgeMode)
+	}
+	if c.Assert.JudgeSamples != nil {
+		t.Errorf("JudgeSamples = %v, want nil when not specified", c.Assert.JudgeSamples)
+	}
+}
+
 // TestLoadDirRejectsYAMLAliasBombQuickly covers a "billion laughs"-style
 // YAML alias-expansion attack (nested anchors/aliases that expand
 // exponentially) — genuinely untrusted-ish content, since evals/*.yaml can
