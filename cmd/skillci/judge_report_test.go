@@ -42,3 +42,25 @@ func TestPrintJudgeFindingsShowsFailingCriteria(t *testing.T) {
 		t.Errorf("output = %q, want only the FAILING criterion listed, not the passing one", out)
 	}
 }
+
+func TestPrintJudgeFindingsShowsSampleTallyWhenVoted(t *testing.T) {
+	var buf bytes.Buffer
+	printJudgeFindings(&buf, []runner.JudgeFinding{
+		{Name: "tone", Passed: false, Reason: "too curt", SampleCount: 3, PassCount: 1},
+	})
+	out := buf.String()
+	if !strings.Contains(out, "1/3 samples passed") {
+		t.Errorf("output = %q, want it to contain the sample tally \"1/3 samples passed\"", out)
+	}
+}
+
+func TestPrintJudgeFindingsOmitsSampleTallyWhenNotVoted(t *testing.T) {
+	var buf bytes.Buffer
+	printJudgeFindings(&buf, []runner.JudgeFinding{
+		{Name: "tone", Passed: false, Reason: "too curt"},
+	})
+	out := buf.String()
+	if strings.Contains(out, "samples passed") {
+		t.Errorf("output = %q, want no sample tally when SampleCount is unset (single-sample case)", out)
+	}
+}

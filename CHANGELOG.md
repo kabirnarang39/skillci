@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `check`'s `judge`/`judge_strict` assertion now reasons step-by-step
+  before each verdict (the G-Eval technique promptfoo's `llm-rubric` and
+  deepeval's `GEval` are built on), supports `judge_mode: batched |
+  isolated` (global `.skillci.yaml` default, per-case
+  `assert.judge_mode` override) to trade cost for full per-criterion
+  reasoning isolation, caches verdicts to `.skillci/judge-cache.json` so
+  a repeat call against an unchanged response never re-pays for the API
+  call, and supports `judge_samples` self-consistency voting — the same
+  asymmetry `flake_retries` already closed for the case model, now
+  closed for the judge model's own sampling variance too.
+
 ### Fixed
 - `check --verify-pinned-sources` no longer fetches loopback, private,
   link-local, unspecified, or multicast addresses — a skill's own

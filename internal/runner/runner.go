@@ -12,6 +12,7 @@ import (
 	"github.com/kabirnarang39/skillci/internal/evalspec"
 	"github.com/kabirnarang39/skillci/internal/fuzz"
 	"github.com/kabirnarang39/skillci/internal/fuzzcache"
+	"github.com/kabirnarang39/skillci/internal/judgecache"
 	"github.com/kabirnarang39/skillci/internal/snapshot"
 	"gopkg.in/yaml.v3"
 )
@@ -53,10 +54,16 @@ type Result struct {
 }
 
 // JudgeFinding is one criterion's verdict from the judge model.
+// SampleCount and PassCount are both 0 when the case didn't set
+// judge_samples (i.e. a single sample was trusted directly, with no
+// voting) — CLI/dashboard output only renders a vote tally when there's
+// an actual vote behind it.
 type JudgeFinding struct {
-	Name   string
-	Passed bool
-	Reason string
+	Name        string
+	Passed      bool
+	Reason      string
+	SampleCount int
+	PassCount   int
 }
 
 type skillMeta struct {
@@ -251,15 +258,56 @@ If, given the user's message, you would invoke this skill, begin your response w
 			// accident of groupJudgeCriteria's own default branch.
 			effectiveMode = "batched"
 		}
+		samples := 1
+		if c.Assert.JudgeSamples != nil && *c.Assert.JudgeSamples > 0 {
+			samples = *c.Assert.JudgeSamples
+		}
+
+		cachePath := filepath.Join(skillDir, ".skillci", "judge-cache.json")
+		cache, cerr := judgecache.Load(cachePath)
+		cacheAvailable := cerr == nil // a corrupt cache file degrades to "always call live," never a case failure
+
 		groups := groupJudgeCriteria(effectiveMode, c.Assert.Judge)
 		var findings []JudgeFinding
+		cacheDirty := false
 		for _, group := range groups {
-			groupFindings, jerr := runJudgeGroup(ctx, client, judgeModel, content, group)
-			if jerr != nil {
-				return Result{}, jerr
+			criteriaParts := make([]string, 0, len(group)*2)
+			for _, crit := range group {
+				criteriaParts = append(criteriaParts, crit.Name, crit.Criterion)
 			}
-			findings = append(findings, groupFindings...)
+			key := judgecache.Hash(append([]string{judgeModel}, append(criteriaParts, content)...)...)
+
+			var groupSamples [][]JudgeFinding
+			if cacheAvailable {
+				if cached, ok := cache.Samples(key); ok {
+					for _, s := range cached {
+						if len(groupSamples) == samples {
+							break
+						}
+						groupSamples = append(groupSamples, findingsFromRecords(s.Findings))
+					}
+				}
+			}
+			for len(groupSamples) < samples {
+				groupFindings, jerr := runJudgeGroup(ctx, client, judgeModel, content, group)
+				if jerr != nil {
+					return Result{}, jerr
+				}
+				groupSamples = append(groupSamples, groupFindings)
+				if cacheAvailable {
+					cache.Append(key, judgecache.Sample{Findings: recordsFromFindings(groupFindings)})
+					cacheDirty = true
+				}
+			}
+
+			findings = append(findings, voteJudgeFindings(group, groupSamples)...)
 		}
+		if cacheAvailable && cacheDirty {
+			if err := cache.Save(cachePath); err != nil {
+				return Result{}, err
+			}
+		}
+
 		result.JudgeFindings = findings
 		failed := 0
 		for _, f := range findings {
@@ -295,6 +343,60 @@ func groupJudgeCriteria(mode string, criteria []evalspec.JudgeCriterion) [][]eva
 		return groups
 	}
 	return [][]evalspec.JudgeCriterion{criteria}
+}
+
+func recordsFromFindings(findings []JudgeFinding) []judgecache.FindingRecord {
+	records := make([]judgecache.FindingRecord, len(findings))
+	for i, f := range findings {
+		records[i] = judgecache.FindingRecord{Name: f.Name, Passed: f.Passed, Reason: f.Reason}
+	}
+	return records
+}
+
+func findingsFromRecords(records []judgecache.FindingRecord) []JudgeFinding {
+	findings := make([]JudgeFinding, len(records))
+	for i, r := range records {
+		findings[i] = JudgeFinding{Name: r.Name, Passed: r.Passed, Reason: r.Reason}
+	}
+	return findings
+}
+
+// voteJudgeFindings majority-votes each criterion in group across every
+// sample in samples (each sample holds one verdict per criterion in
+// group, in the same order). A criterion's Reason is taken from a
+// sample whose verdict matches the winning side. SampleCount/PassCount
+// are always populated (SampleCount is 1 for the untouched
+// single-sample case, reproducing today's exact pre-voting behavior) —
+// callers treat "no real vote happened" as SampleCount <= 1, not
+// SampleCount == 0.
+func voteJudgeFindings(group []evalspec.JudgeCriterion, samples [][]JudgeFinding) []JudgeFinding {
+	findings := make([]JudgeFinding, len(group))
+	for i, crit := range group {
+		passCount := 0
+		for _, sample := range samples {
+			if sample[i].Passed {
+				passCount++
+			}
+		}
+		total := len(samples)
+		majorityPassed := passCount*2 > total
+		// Prefer a reason from a sample matching the majority verdict.
+		var chosenReason string
+		for _, sample := range samples {
+			if sample[i].Passed == majorityPassed {
+				chosenReason = sample[i].Reason
+				break
+			}
+		}
+		findings[i] = JudgeFinding{
+			Name:        crit.Name,
+			Passed:      majorityPassed,
+			Reason:      chosenReason,
+			SampleCount: total,
+			PassCount:   passCount,
+		}
+	}
+	return findings
 }
 
 // runJudgeGroup sends every criterion in group together in one judge API

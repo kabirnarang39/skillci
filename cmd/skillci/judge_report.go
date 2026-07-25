@@ -26,6 +26,10 @@ func printJudgeFindings(w io.Writer, findings []runner.JudgeFinding) {
 		if f.Passed {
 			continue
 		}
-		fmt.Fprintf(w, "    %s: FAIL — %s\n", f.Name, f.Reason)
+		if f.SampleCount > 1 {
+			fmt.Fprintf(w, "    %s: FAIL (%d/%d samples passed) — %s\n", f.Name, f.PassCount, f.SampleCount, f.Reason)
+		} else {
+			fmt.Fprintf(w, "    %s: FAIL — %s\n", f.Name, f.Reason)
+		}
 	}
 }
