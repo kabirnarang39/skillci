@@ -101,6 +101,7 @@ func newRegressCmd() *cobra.Command {
 				}
 				printFlakeReport(cmd.OutOrStdout(), o.Result, o.Case.Assert.FlakeStrict != nil && *o.Case.Assert.FlakeStrict)
 				printJudgeFindings(cmd.OutOrStdout(), o.Result.JudgeFindings)
+				printRedteamFindings(cmd.OutOrStdout(), o.Result.RedteamFindings)
 				if o.IsNewRegression {
 					if autoBisectFlag {
 						fmt.Fprintf(cmd.OutOrStdout(), "  auto-bisecting %s (model %s) to find which commit broke it...\n", o.Case.Name, o.Model)

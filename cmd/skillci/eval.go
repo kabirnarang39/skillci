@@ -72,6 +72,7 @@ func newEvalCmd() *cobra.Command {
 				}
 				printFlakeReport(cmd.OutOrStdout(), result, c.Assert.FlakeStrict != nil && *c.Assert.FlakeStrict)
 				printJudgeFindings(cmd.OutOrStdout(), result.JudgeFindings)
+				printRedteamFindings(cmd.OutOrStdout(), result.RedteamFindings)
 			}
 
 			if failed > 0 {
