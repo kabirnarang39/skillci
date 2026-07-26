@@ -21,6 +21,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **Self-growing eval loop** | An uncovered regression writes its own permanent test case instead of just failing once. |
 | **Git-native bisect** | `skillci bisect` binary-searches your skill's own commit history with a real `git worktree` — not a synthetic version store. |
 | **Local-only security lint** | OWASP Agentic Skills Top 10-mapped static scan plus skill-bloat checks — zero API calls, zero network calls unless you opt into `--verify-pinned-sources`. |
+| **Gradual-adoption lint mode** | `--mode warn` (or `.skillci.yaml`'s `lint: mode/rules`) reports every finding without failing the build — pilot skillci across a team, then promote specific rules to blocking one at a time instead of an all-or-nothing cutover. |
 | **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
 | **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. |
 | **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample; `flake_always_sample` votes on every case, not just failing ones, to also catch a regression that got lucky on attempt 1. |
@@ -187,11 +188,35 @@ user-configurable, and — like the security rules — purely local pattern
 matching, not a judgment call about whether a skill is *good*, just
 whether it's carrying more than it needs to.
 
-Add `--format json` for machine-parseable output — a stable array of `{file,
-line, rule, msg}` objects on stdout (`[]` for a clean skill, never `null`),
-with the pass/fail exit code as the only other signal a caller needs. This
-is what the [VS Code extension](#vs-code-extension) below runs under the
-hood; useful for any other editor integration or script too.
+Add `--format json` for machine-parseable output — a stable array of
+`{file, line, rule, msg, severity}` objects on stdout (`[]` for a clean
+skill, never `null`), with the pass/fail exit code as the only other
+signal a caller needs. This is what the [VS Code extension](#vs-code-extension)
+below runs under the hood; useful for any other editor integration or
+script too.
+
+Every issue is `block` severity by default — the long-standing behavior,
+a lint issue fails the command. For rolling `check` out to a team gradually
+instead of an all-or-nothing cutover, `--mode warn` reports every issue but
+never fails the command:
+
+```bash
+skillci check --mode warn path/to/your-skill
+```
+
+Or make it permanent (and promote specific rules back to blocking) via
+`.skillci.yaml`:
+
+```yaml
+lint:
+  mode: warn                        # default severity for any rule not named below
+  rules:
+    ast01-pipe-to-shell: block      # promote just this one while piloting the rest
+```
+
+`--mode` on the command line always wins over `.skillci.yaml` — including
+over a per-rule `block` override — for a quick one-off check without
+touching the config file.
 
 ```bash
 # Run the eval suite against one model
@@ -756,7 +781,7 @@ having to ask for it each time.
 | Command | What it does |
 |---|---|
 | `skillci init` | Scaffold `.skillci.yaml` and an example eval case |
-| `skillci check` | Lint `SKILL.md` — local only, no API calls |
+| `skillci check` | Lint `SKILL.md` — local only, no API calls. `--mode warn` reports without failing the build |
 | `skillci eval` | Run the eval suite against one model |
 | `skillci regress` | Run the full model matrix, diff vs. last known-good, gate CI |
 | `skillci accept` | Promote a generated eval case into the permanent suite |

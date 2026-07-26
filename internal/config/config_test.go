@@ -311,3 +311,81 @@ func TestLoadRejectsYAMLAliasBombQuickly(t *testing.T) {
 		t.Fatal("Load() did not return within 5s — alias-bomb protection regressed")
 	}
 }
+
+// TestLintPolicySeverityDefaultsToBlock covers the zero-value LintPolicy —
+// the shape every existing .skillci.yaml (or none at all) has — so adding
+// the lint policy feature can never silently change check's long-standing
+// default behavior for anyone who hasn't opted in.
+func TestLintPolicySeverityDefaultsToBlock(t *testing.T) {
+	var lp LintPolicy
+	if got := lp.Severity("any-rule"); got != "block" {
+		t.Errorf("Severity() = %q, want %q for a zero-value LintPolicy", got, "block")
+	}
+}
+
+// TestLintPolicySeverityRuleOverridesMode proves Rules wins over Mode, the
+// exact mechanism a team promoting one rule to blocking while piloting
+// everything else as warn-only depends on.
+func TestLintPolicySeverityRuleOverridesMode(t *testing.T) {
+	lp := LintPolicy{Mode: "warn", Rules: map[string]string{"ast01-pipe-to-shell": "block"}}
+	if got := lp.Severity("ast01-pipe-to-shell"); got != "block" {
+		t.Errorf("Severity(ast01-pipe-to-shell) = %q, want %q (rule override)", got, "block")
+	}
+	if got := lp.Severity("missing-description"); got != "warn" {
+		t.Errorf("Severity(missing-description) = %q, want %q (falls back to Mode)", got, "warn")
+	}
+}
+
+func TestLoadRejectsUnrecognizedLintMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "lint:\n  mode: warm\n" // typo of warn
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for an unrecognized lint.mode value")
+	}
+	if !strings.Contains(err.Error(), "warm") {
+		t.Errorf("Load() error = %q, want it to name the invalid value", err)
+	}
+}
+
+func TestLoadRejectsUnrecognizedLintRuleSeverity(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "lint:\n  rules:\n    missing-description: ignore\n" // not block/warn
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() error = nil, want an error for an unrecognized lint.rules severity")
+	}
+	if !strings.Contains(err.Error(), "missing-description") || !strings.Contains(err.Error(), "ignore") {
+		t.Errorf("Load() error = %q, want it to name both the rule and the invalid value", err)
+	}
+}
+
+func TestLoadAcceptsValidLintPolicy(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".skillci.yaml")
+	content := "lint:\n  mode: warn\n  rules:\n    ast01-pipe-to-shell: block\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Lint.Mode != "warn" {
+		t.Errorf("Lint.Mode = %q, want warn", cfg.Lint.Mode)
+	}
+	if cfg.Lint.Rules["ast01-pipe-to-shell"] != "block" {
+		t.Errorf("Lint.Rules[ast01-pipe-to-shell] = %q, want block", cfg.Lint.Rules["ast01-pipe-to-shell"])
+	}
+}

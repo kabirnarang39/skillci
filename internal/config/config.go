@@ -32,6 +32,39 @@ type Config struct {
 	// "isolated" (one API call per criterion). A case's own
 	// assert.judge_mode overrides this. Unset defaults to "batched".
 	JudgeMode string `yaml:"judge_mode"`
+	// Lint controls `skillci check`'s severity/blocking behavior — lets a
+	// platform team pilot skillci non-blocking in CI before promoting
+	// specific rules (or everything) to hard-fail, instead of an
+	// all-or-nothing cutover the first time it's wired in.
+	Lint LintPolicy `yaml:"lint"`
+}
+
+// LintPolicy is `skillci check`'s severity/blocking configuration.
+type LintPolicy struct {
+	// Mode is the default severity for any rule not named in Rules:
+	// "block" (default — a lint issue fails the command, the long-standing
+	// behavior) or "warn" (issues are still reported but never fail the
+	// command). check's own --mode flag, when passed, overrides this
+	// entirely — including Rules — for a quick one-off without editing
+	// the config file.
+	Mode string `yaml:"mode"`
+	// Rules overrides Mode on a per-rule-name basis, e.g.
+	// {"missing-description": "warn"} lets a team promote specific rules
+	// to blocking while piloting others as warnings.
+	Rules map[string]string `yaml:"rules"`
+}
+
+// Severity resolves the effective severity ("block" or "warn") for a lint
+// rule: an entry in Rules wins, falling back to Mode, falling back to
+// "block" — the behavior an empty/absent LintPolicy has always had.
+func (lp LintPolicy) Severity(rule string) string {
+	if s, ok := lp.Rules[rule]; ok {
+		return s
+	}
+	if lp.Mode != "" {
+		return lp.Mode
+	}
+	return "block"
 }
 
 // ModelPricing is one model's per-million-token rates, matching
@@ -62,6 +95,14 @@ var validJudgeMode = map[string]bool{
 }
 
 const validJudgeModeList = `"batched", "isolated"`
+
+// validSeverity is the exact set LintPolicy.Severity can resolve to.
+var validSeverity = map[string]bool{
+	"block": true,
+	"warn":  true,
+}
+
+const validSeverityList = `"block", "warn"`
 
 func Default() Config {
 	return Config{
@@ -100,6 +141,21 @@ func Load(path string) (Config, error) {
 	}
 	if !validJudgeMode[cfg.JudgeMode] {
 		return Config{}, fmt.Errorf("judge_mode: %q is not a recognized value — must be one of %s", cfg.JudgeMode, validJudgeModeList)
+	}
+	if cfg.Lint.Mode != "" && !validSeverity[cfg.Lint.Mode] {
+		return Config{}, fmt.Errorf("lint.mode: %q is not a recognized value — must be one of %s", cfg.Lint.Mode, validSeverityList)
+	}
+	// Sorted iteration for the same reason as the Pricing loop below: a
+	// deterministic error on every run when multiple entries are invalid.
+	rules := make([]string, 0, len(cfg.Lint.Rules))
+	for rule := range cfg.Lint.Rules {
+		rules = append(rules, rule)
+	}
+	sort.Strings(rules)
+	for _, rule := range rules {
+		if severity := cfg.Lint.Rules[rule]; !validSeverity[severity] {
+			return Config{}, fmt.Errorf("lint.rules[%q]: %q is not a recognized value — must be one of %s", rule, severity, validSeverityList)
+		}
 	}
 	// Sorted iteration: map order is nondeterministic in Go, and if
 	// multiple pricing entries are invalid at once the error should
