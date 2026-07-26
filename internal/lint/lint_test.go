@@ -1352,3 +1352,52 @@ func TestLintSkillCRLFLineEndingsFailCleanlyNotSilently(t *testing.T) {
 		t.Errorf("issues[0].Rule = %q, want invalid-frontmatter", issues[0].Rule)
 	}
 }
+
+func TestLintEvalsFlagsUnknownRedteamPlugin(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: bad-case\nprompt: hi\nassert:\n  triggered: true\n  redteam:\n    - plugin: this-plugin-does-not-exist\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "bad.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	found := false
+	for _, iss := range issues {
+		if iss.Rule == "redteam-unknown-plugin" {
+			found = true
+			if !strings.Contains(iss.Msg, "this-plugin-does-not-exist") {
+				t.Errorf("Msg = %q, want it to name the unknown plugin", iss.Msg)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("issues = %+v, want a redteam-unknown-plugin issue", issues)
+	}
+}
+
+func TestLintEvalsNoWarningForKnownRedteamPlugins(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "evals"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "name: good-case\nprompt: hi\nassert:\n  triggered: true\n  redteam:\n    - plugin: prompt-injection-canary\n    - plugin: crescendo-jailbreak\n"
+	if err := os.WriteFile(filepath.Join(dir, "evals", "good.yaml"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	issues, err := LintEvals(dir)
+	if err != nil {
+		t.Fatalf("LintEvals() error = %v", err)
+	}
+	for _, iss := range issues {
+		if iss.Rule == "redteam-unknown-plugin" {
+			t.Errorf("issues = %+v, want no redteam-unknown-plugin issue for known plugin names", issues)
+		}
+	}
+}

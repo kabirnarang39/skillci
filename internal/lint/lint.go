@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/kabirnarang39/skillci/internal/evalspec"
+	"github.com/kabirnarang39/skillci/internal/redteam"
 )
 
 type Issue struct {
@@ -295,6 +296,19 @@ func LintEvals(dir string) ([]Issue, error) {
 				Rule: "redteam-strict-without-redteam",
 				Msg:  fmt.Sprintf("case %q sets redteam_strict: true without any redteam plugins — redteam_strict has no effect unless redteam is also set", c.Name),
 			})
+		}
+		// A typo'd plugin name is otherwise only caught at eval/regress
+		// time (runner.go's runRedteamPlugins), i.e. a paid model run —
+		// catching it here at lint time makes it free and immediate.
+		for _, attack := range c.Assert.Redteam {
+			if _, ok := redteam.Registry[attack.Plugin]; !ok {
+				issues = append(issues, Issue{
+					File: c.SourceFile,
+					Line: 1,
+					Rule: "redteam-unknown-plugin",
+					Msg:  fmt.Sprintf("case %q references unknown redteam plugin %q", c.Name, attack.Plugin),
+				})
+			}
 		}
 	}
 	return issues, nil
