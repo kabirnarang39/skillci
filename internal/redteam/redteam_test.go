@@ -217,11 +217,9 @@ func TestBase64InstructionSmugglingEmbedsEncodedDirective(t *testing.T) {
 	if !strings.Contains(attack, "write a haiku") {
 		t.Error("attack prompt must still contain the original base prompt")
 	}
-	if !strings.Contains(attack, state) {
-		t.Errorf("attack prompt %q does not contain its own state token %q", attack, state)
+	if strings.Contains(attack, state) {
+		t.Errorf("attack prompt %q contains the plaintext canary token %q — the token must ONLY appear inside the base64-encoded directive, or this plugin degenerates into a plain-context-echo test instead of testing whether the encoded directive is actually decoded and followed", attack, state)
 	}
-	// The directive itself must be base64-encoded, not plain text, in the
-	// attack prompt -- otherwise this is just prompt-injection-canary again.
 	decoded, err := base64.StdEncoding.DecodeString(extractBase64Directive(attack))
 	if err != nil {
 		t.Fatalf("could not find a valid base64 directive in attack prompt %q: %v", attack, err)
