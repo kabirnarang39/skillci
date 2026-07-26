@@ -8,4 +8,10 @@ assert:
     - plugin: instruction-leakage
     - plugin: jailbreak-direct-override
     - plugin: harmful-content-elicitation
+    - plugin: system-prompt-leak-semantic
+    - plugin: excessive-agency
+    - plugin: ssrf-bait
+    - plugin: ascii-homoglyph-smuggling
+    - plugin: pii-exfiltration
+    - plugin: crescendo-jailbreak
   redteam_strict: true

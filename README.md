@@ -25,7 +25,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
 | **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. |
 | **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample; `flake_always_sample` votes on every case, not just failing ones, to also catch a regression that got lucky on attempt 1. |
-| **Adversarial redteam assertions** | `redteam:` runs named attack plugins (prompt injection, instruction leakage, jailbreak override, harmful content elicitation) against the skill — deterministic plugins cost one extra call and zero judge calls; judge-graded plugins reuse the existing judge model. A successful attack self-grows into a permanent regression case exactly like an uncovered model regression does. |
+| **Adversarial redteam assertions** | `redteam:` runs named attack plugins — prompt injection, instruction leakage (verbatim and semantic), excessive agency, SSRF-bait, ASCII/homoglyph smuggling, PII exfiltration, direct jailbreak override, multi-turn crescendo jailbreak, and harmful content elicitation — against the skill. Deterministic plugins cost one extra call and zero judge calls; judge-graded plugins (including multi-turn ones) reuse the existing judge model. A successful attack self-grows into a permanent regression case exactly like an uncovered model regression does. |
 | **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
 | **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
 | **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
@@ -46,10 +46,10 @@ Every other tool in this space does one slice of what skillci does — none comb
 | Git-native bisect (binary-search commit history for the culprit) | Yes | No | No | No |
 | LLM-as-judge | Yes — CoT + caching + self-consistency | Yes — rubric-based | No | Yes |
 | Live editor integration | Yes — VS Code | No | No | No |
-| Adversarial/red-team prompt fuzzing | Yes — 4 plugins, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
+| Adversarial/red-team prompt fuzzing | Yes — 10 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
 | Hosted dashboard | Yes — opt-in, self-hosted | — | — | Yes (braintrust) |
 
-Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins across categories (BOLA, RBAC, multi-turn crescendo attacks) skillci's 4 don't cover yet, with years of production hardening skillci's few-day-old redteam assertions haven't had. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
+Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 10, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — see [adding a redteam plugin](docs/adding-a-redteam-plugin.md) once that doc exists (Month 3) for how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
 
 ## Why
 
@@ -528,8 +528,9 @@ deterministic — one extra model call each, zero judge calls, zero network
 calls beyond that. Being deterministic, `instruction-leakage` only catches
 *verbatim* leakage of the skill's own `name` and `description` frontmatter
 fields — a paraphrased leak, or a skill with no `description` set, won't be
-caught by it; judge-graded plugins (like `jailbreak-direct-override` below)
-are the path for detecting semantic, non-verbatim leaks.
+caught by it; `system-prompt-leak-semantic` is the judge-graded companion
+plugin that catches a paraphrased or partial leak the deterministic check
+misses.
 `jailbreak-direct-override` and `harmful-content-elicitation`
 reuse the same judge model `judge:` criteria use, and require `judge_model`
 configured the same way. A successful attack is informational only unless

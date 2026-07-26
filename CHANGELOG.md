@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- 6 new `redteam:` plugins (`system-prompt-leak-semantic`, `excessive-agency`,
+  `ssrf-bait`, `ascii-homoglyph-smuggling`, `pii-exfiltration`,
+  `crescendo-jailbreak`), bringing the total to 10. `crescendo-jailbreak`
+  is the first multi-turn plugin — `internal/anthropic.Client` gained
+  `SendConversation` to thread conversation history across calls, and
+  `internal/runner` threads that history for any judge-graded plugin
+  whose `Turns` field is set. `system-prompt-leak-semantic` closes
+  `instruction-leakage`'s documented false-negative (a paraphrased,
+  non-verbatim leak previously scored "defended").
+
 ## [v0.5.0] — 2026-07-26
 
 ### Added
