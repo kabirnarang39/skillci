@@ -81,9 +81,10 @@ func TestPrintFuzzGeneratedCapNoticeOnlyWhenGenerating(t *testing.T) {
 		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "e"}, Flipped: true},
 		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "f"}, Flipped: true},
 	}
-	// isFirstRun=false means RunMatrix's !hadPrior gate never fired, so no
-	// GeneratedCases were proposed at all -- the notice must stay silent,
-	// not claim a cap that was never actually applied.
+	// false means RunMatrix's self-growing fuzz path never fired for this
+	// case+model (either it wasn't the first run, or the case isn't
+	// fuzz_strict), so no GeneratedCases were proposed at all -- the notice
+	// must stay silent, not claim a cap that was never actually applied.
 	printFuzzGeneratedCapNotice(&buf, findings, false)
 	if buf.String() != "" {
 		t.Errorf("output = %q, want empty — this wasn't the case's first run, nothing was actually proposed", buf.String())
@@ -113,6 +114,19 @@ func TestPrintFuzzCoverageRealCoverageNoLine(t *testing.T) {
 	printFuzzCoverage(&buf, findings, coverage)
 	if strings.Contains(buf.String(), "FUZZ COVERAGE") {
 		t.Errorf("output = %q, want no coverage line — real mutations were generated (both from findings and from the coverage map)", buf.String())
+	}
+}
+
+// TestPrintFuzzCoverageNilCoverageNoLine covers every case that never fuzzed
+// at all: runner leaves Result.FuzzCoverage nil unless the fuzz block ran, and
+// `skillci eval`/`regress` call this for EVERY case, not just fuzz-enabled
+// ones. A nil map must stay silent — otherwise every ordinary eval case prints
+// "fuzz testing ran but produced no real signal" about fuzzing that never ran.
+func TestPrintFuzzCoverageNilCoverageNoLine(t *testing.T) {
+	var buf bytes.Buffer
+	printFuzzCoverage(&buf, nil, nil)
+	if buf.Len() != 0 {
+		t.Errorf("output = %q, want empty — this case never ran fuzzing, so there is no coverage claim to make", buf.String())
 	}
 }
 

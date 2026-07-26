@@ -39,10 +39,13 @@ const fuzzGeneratedCasesCap = 5
 
 // printFuzzGeneratedCapNotice prints a note when more mutations flipped
 // than could become generated cases, so a case that hits the cap doesn't
-// read as if every flip was captured. isFirstRun must be the same !hadPrior
-// value RunMatrix used — this only fired at all if isFirstRun is true.
-func printFuzzGeneratedCapNotice(w io.Writer, findings []fuzz.Finding, isFirstRun bool) {
-	if !isFirstRun {
+// read as if every flip was captured. proposedCases must be true only when
+// RunMatrix's self-growing fuzz path actually ran for this case+model —
+// both of its gates (!hadPrior AND fuzz_strict), not just the first. A
+// `fuzz: true` case without `fuzz_strict` never proposes anything, so
+// claiming "5/N proposed" for it would be a flat lie.
+func printFuzzGeneratedCapNotice(w io.Writer, findings []fuzz.Finding, proposedCases bool) {
+	if !proposedCases {
 		return
 	}
 	flipped := 0
@@ -64,9 +67,13 @@ func printFuzzGeneratedCapNotice(w io.Writer, findings []fuzz.Finding, isFirstRu
 // actually tested" note instead of a silent, indistinguishable-from-covered
 // pass. Never printed when real mutations exist, even if some individual
 // operator's coverage is zero — that's normal (not every operator applies
-// to every prompt).
+// to every prompt). A nil coverage map means fuzzing never ran for this
+// case at all (no `fuzz: true`, or the case already failed another
+// assertion before the fuzz block's guard) — silent, since there is no
+// coverage claim to make either way. Without that check every non-fuzz
+// case in `skillci eval`/`regress` would print the line.
 func printFuzzCoverage(w io.Writer, findings []fuzz.Finding, coverage map[string]fuzz.OperatorCoverage) {
-	if len(findings) > 0 {
+	if coverage == nil || len(findings) > 0 {
 		return
 	}
 	totalGenerated := 0
