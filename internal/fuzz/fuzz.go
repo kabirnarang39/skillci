@@ -31,20 +31,57 @@ var synonymPairs = map[string]string{
 	"fix":    "repair",
 }
 
-// Generate runs all four mutation operators against prompt and returns the
-// combined, order-stable result: synonym-swap, then negation, then reorder,
-// then context-prefix.
-func Generate(prompt string) []Mutation {
+// OperatorCoverage reports how many words in a prompt were eligible for an
+// operator, and how many actually became a mutation after the
+// maxMutationsPerOperator cap — so a prompt that dodges every operator (no
+// synonym hits, every word under 4 letters) is visibly "0 generated"
+// instead of a silent, indistinguishable-from-untested pass.
+type OperatorCoverage struct {
+	Eligible  int
+	Generated int
+}
+
+// Generate runs every mutation operator against prompt and returns the
+// combined, order-stable mutation list alongside per-operator coverage:
+// synonym-swap, negation, reorder, context-prefix, typo-perturbation,
+// case-mutation, whitespace-obfuscation, unicode-homoglyph.
+func Generate(prompt string) ([]Mutation, map[string]OperatorCoverage) {
 	trimmed := strings.TrimSpace(prompt)
+	coverage := map[string]OperatorCoverage{
+		"typo-perturbation":      {},
+		"case-mutation":          {},
+		"whitespace-obfuscation": {},
+		"unicode-homoglyph":      {},
+	}
 	if trimmed == "" {
-		return nil
+		return nil, coverage
 	}
 	var out []Mutation
 	out = append(out, synonymSwapMutations(trimmed)...)
 	out = append(out, negationMutations(trimmed)...)
 	out = append(out, reorderMutations(trimmed)...)
 	out = append(out, contextPrefixMutations(trimmed)...)
-	return out
+
+	words := strings.Fields(trimmed)
+	eligible := len(eligibleWordIndices(words))
+
+	typoMuts := typoPerturbationMutations(trimmed)
+	coverage["typo-perturbation"] = OperatorCoverage{Eligible: eligible, Generated: len(typoMuts)}
+	out = append(out, typoMuts...)
+
+	caseMuts := caseMutationMutations(trimmed)
+	coverage["case-mutation"] = OperatorCoverage{Eligible: eligible, Generated: len(caseMuts)}
+	out = append(out, caseMuts...)
+
+	wsMuts := whitespaceObfuscationMutations(trimmed)
+	coverage["whitespace-obfuscation"] = OperatorCoverage{Eligible: eligible, Generated: len(wsMuts)}
+	out = append(out, wsMuts...)
+
+	homoglyphMuts := unicodeHomoglyphMutations(trimmed)
+	coverage["unicode-homoglyph"] = OperatorCoverage{Eligible: eligible, Generated: len(homoglyphMuts)}
+	out = append(out, homoglyphMuts...)
+
+	return out, coverage
 }
 
 // synonymSwapMutations generates one mutation per word that has a

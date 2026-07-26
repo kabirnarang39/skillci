@@ -6,7 +6,7 @@ import (
 )
 
 func TestSynonymSwap(t *testing.T) {
-	muts := Generate("Can you write me a haiku about autumn?")
+	muts, _ := Generate("Can you write me a haiku about autumn?")
 	found := false
 	for _, m := range muts {
 		if m.Operator == "synonym-swap" && m.Prompt == "Can you compose me a haiku about autumn?" {
@@ -24,7 +24,7 @@ func TestSynonymSwap(t *testing.T) {
 // word — otherwise every word after the first eligible one is silently
 // never fuzz-tested at all, for the lifetime of that eval case.
 func TestSynonymSwapProducesOneMutationPerEligibleWord(t *testing.T) {
-	muts := Generate("Please review and fix this code")
+	muts, _ := Generate("Please review and fix this code")
 	wantPrompts := map[string]bool{
 		"Please check and fix this code":     false,
 		"Please review and repair this code": false,
@@ -45,7 +45,7 @@ func TestSynonymSwapProducesOneMutationPerEligibleWord(t *testing.T) {
 }
 
 func TestSynonymSwapNoHitReturnsNoSynonymMutation(t *testing.T) {
-	muts := Generate("What is the weather like today?")
+	muts, _ := Generate("What is the weather like today?")
 	for _, m := range muts {
 		if m.Operator == "synonym-swap" {
 			t.Errorf("Generate() produced synonym-swap mutation %+v for a prompt with no synonym-map hit", m)
@@ -54,7 +54,7 @@ func TestSynonymSwapNoHitReturnsNoSynonymMutation(t *testing.T) {
 }
 
 func TestNegationInsertion(t *testing.T) {
-	muts := Generate("Can you write me a haiku about autumn?")
+	muts, _ := Generate("Can you write me a haiku about autumn?")
 	var negations []Mutation
 	for _, m := range muts {
 		if m.Operator == "negation" {
@@ -73,7 +73,7 @@ func TestNegationInsertion(t *testing.T) {
 }
 
 func TestSentenceReorderSkippedForSingleSentence(t *testing.T) {
-	muts := Generate("Write me a haiku about autumn.")
+	muts, _ := Generate("Write me a haiku about autumn.")
 	for _, m := range muts {
 		if m.Operator == "reorder" {
 			t.Errorf("Generate() produced a reorder mutation %+v for a single-sentence prompt", m)
@@ -82,7 +82,7 @@ func TestSentenceReorderSkippedForSingleSentence(t *testing.T) {
 }
 
 func TestSentenceReorderTwoSentences(t *testing.T) {
-	muts := Generate("Write me a haiku. Make it about autumn.")
+	muts, _ := Generate("Write me a haiku. Make it about autumn.")
 	var reorders []Mutation
 	for _, m := range muts {
 		if m.Operator == "reorder" {
@@ -98,7 +98,7 @@ func TestSentenceReorderTwoSentences(t *testing.T) {
 }
 
 func TestSentenceReorderSkippedAboveThreeSentences(t *testing.T) {
-	muts := Generate("One. Two. Three. Four.")
+	muts, _ := Generate("One. Two. Three. Four.")
 	for _, m := range muts {
 		if m.Operator == "reorder" {
 			t.Errorf("Generate() produced a reorder mutation %+v for a 4-sentence prompt, want skipped (combinatorial blowup guard)", m)
@@ -107,7 +107,7 @@ func TestSentenceReorderSkippedAboveThreeSentences(t *testing.T) {
 }
 
 func TestContextPrefix(t *testing.T) {
-	muts := Generate("Write me a haiku about autumn.")
+	muts, _ := Generate("Write me a haiku about autumn.")
 	var prefixed []Mutation
 	for _, m := range muts {
 		if m.Operator == "context-prefix" {
@@ -126,10 +126,10 @@ func TestContextPrefix(t *testing.T) {
 }
 
 func TestGenerateEmptyPromptReturnsEmptySlice(t *testing.T) {
-	if muts := Generate(""); len(muts) != 0 {
+	if muts, _ := Generate(""); len(muts) != 0 {
 		t.Errorf("Generate(\"\") = %+v, want empty slice", muts)
 	}
-	if muts := Generate("   "); len(muts) != 0 {
+	if muts, _ := Generate("   "); len(muts) != 0 {
 		t.Errorf("Generate(whitespace) = %+v, want empty slice", muts)
 	}
 }
@@ -139,7 +139,7 @@ func TestGenerateUnmutatablePromptStillReturnsContextPrefixOnly(t *testing.T) {
 	// verb-prefix pattern still gets negation (word-0 heuristic) and
 	// context-prefix mutations — Generate never returns nil for any
 	// non-empty prompt.
-	muts := Generate("Autumn.")
+	muts, _ := Generate("Autumn.")
 	if len(muts) == 0 {
 		t.Error("Generate(\"Autumn.\") returned no mutations, want at least negation+context-prefix")
 	}
@@ -294,5 +294,58 @@ func TestUnicodeHomoglyphCapsAtFiveMutations(t *testing.T) {
 	muts := unicodeHomoglyphMutations("alpha bravo charlie delta echo foxtrot golf hotel")
 	if len(muts) != 5 {
 		t.Fatalf("unicodeHomoglyphMutations() len = %d, want 5 (capped)", len(muts))
+	}
+}
+
+func TestGenerateIncludesAllFourNewOperators(t *testing.T) {
+	muts, _ := Generate("write me a haiku about autumn leaves")
+	seen := map[string]bool{}
+	for _, m := range muts {
+		seen[m.Operator] = true
+	}
+	for _, op := range []string{"typo-perturbation", "case-mutation", "whitespace-obfuscation", "unicode-homoglyph"} {
+		if !seen[op] {
+			t.Errorf("Generate() operators = %v, missing %q", seen, op)
+		}
+	}
+}
+
+func TestGenerateCoverageReportsEligibleAndGenerated(t *testing.T) {
+	// "write" and "haiku" are both >= 4 letters and contain a/e/o/p ("write"
+	// has 'e', "haiku" has 'a') -- both eligible for every new operator.
+	// "me" and "a" are too short for any of the 4 length-gated operators.
+	_, coverage := Generate("write me a haiku")
+	for _, op := range []string{"typo-perturbation", "case-mutation", "whitespace-obfuscation"} {
+		c, ok := coverage[op]
+		if !ok {
+			t.Fatalf("coverage missing operator %q: %+v", op, coverage)
+		}
+		if c.Eligible != 2 {
+			t.Errorf("coverage[%q].Eligible = %d, want 2 (write, haiku)", op, c.Eligible)
+		}
+		if c.Generated != 2 {
+			t.Errorf("coverage[%q].Generated = %d, want 2 (both eligible, none capped)", op, c.Generated)
+		}
+	}
+}
+
+func TestGenerateCoverageReflectsCap(t *testing.T) {
+	_, coverage := Generate("alpha bravo charlie delta echo foxtrot golf hotel")
+	c := coverage["typo-perturbation"]
+	if c.Eligible != 8 {
+		t.Errorf("coverage[typo-perturbation].Eligible = %d, want 8 (all 8 words qualify by length)", c.Eligible)
+	}
+	if c.Generated != 5 {
+		t.Errorf("coverage[typo-perturbation].Generated = %d, want 5 (capped)", c.Generated)
+	}
+}
+
+func TestGenerateCoverageZeroOnFullyIneligiblePrompt(t *testing.T) {
+	_, coverage := Generate("go do it now")
+	for _, op := range []string{"typo-perturbation", "case-mutation", "whitespace-obfuscation", "unicode-homoglyph"} {
+		c := coverage[op]
+		if c.Eligible != 0 || c.Generated != 0 {
+			t.Errorf("coverage[%q] = %+v, want zero — every word is under 4 letters", op, c)
+		}
 	}
 }

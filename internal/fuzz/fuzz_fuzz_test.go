@@ -26,7 +26,7 @@ func FuzzGenerate(f *testing.F) {
 	f.Add("?!.?!.?!.")
 
 	f.Fuzz(func(t *testing.T, prompt string) {
-		muts := Generate(prompt)
+		muts, _ := Generate(prompt)
 		for _, m := range muts {
 			if m.Prompt == "" && strings.TrimSpace(prompt) != "" {
 				t.Errorf("Generate(%q) produced a mutation with an empty Prompt: %+v", prompt, m)
