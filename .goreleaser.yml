@@ -35,6 +35,32 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# SBOM per archive (SPDX JSON via syft, goreleaser's default sbom format) —
+# lets a downstream security team inspect exactly what's in a release
+# artifact without unpacking it.
+sboms:
+  - artifacts: archive
+
+# Cosign keyless signing (GitHub Actions OIDC identity, no private key to
+# manage or leak) over checksums.txt — one signature covers every archive
+# hash in the release, so verifying it verifies all of them. Uses --bundle
+# (cosign v2.5+/v3's unified verification-material format) rather than the
+# older --output-signature/--output-certificate flags, which current cosign
+# no longer has.
+# Verify with: cosign verify-blob --bundle checksums.txt.bundle
+#   --certificate-identity-regexp "https://github.com/kabirnarang39/skillci/.*"
+#   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+#   checksums.txt
+signs:
+  - cmd: cosign
+    signature: "${artifact}.bundle"
+    args:
+      - sign-blob
+      - --bundle=${signature}
+      - --yes
+      - ${artifact}
+    artifacts: checksum
+
 changelog:
   sort: asc
   filters:

@@ -3,6 +3,7 @@
 **Regression testing for Claude Skills.** When a model update silently changes how your skill behaves, SkillCI catches it in CI — and turns the failure into a permanent test case, automatically.
 
 [![CI](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml/badge.svg)](https://github.com/kabirnarang39/skillci/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/kabirnarang39/skillci/badge)](https://scorecard.dev/viewer/?uri=github.com/kabirnarang39/skillci)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
 [![Go Reference](https://pkg.go.dev/badge/github.com/kabirnarang39/skillci.svg)](https://pkg.go.dev/github.com/kabirnarang39/skillci)
@@ -74,6 +75,18 @@ scoop install skillci/skillci
 [latest release](https://github.com/kabirnarang39/skillci/releases/latest)
 — Linux/macOS ship as `.tar.gz`, Windows as `.zip`, with a `checksums.txt`
 alongside to verify against.
+
+**Supply chain**: every archive ships with an SPDX SBOM
+(`<archive>.sbom.json`), and `checksums.txt` is signed keylessly via
+[cosign](https://github.com/sigstore/cosign) using the release workflow's
+GitHub Actions OIDC identity — no private key exists to leak. Verify with:
+
+```bash
+cosign verify-blob --bundle checksums.txt.bundle \
+  --certificate-identity-regexp "https://github.com/kabirnarang39/skillci/.*" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+```
 
 **Go install** (any platform with Go 1.25+):
 
