@@ -23,7 +23,7 @@ import (
 )
 
 func newRegressCmd() *cobra.Command {
-	var uploadFlag, autoBisectFlag, openPRFlag bool
+	var uploadFlag, autoBisectFlag, openPRFlag, verbose bool
 	cmd := &cobra.Command{
 		Use:          "regress [path]",
 		Short:        "Run the eval suite across the configured model matrix and fail CI on new regressions",
@@ -102,7 +102,7 @@ func newRegressCmd() *cobra.Command {
 					printLatencyWarning(cmd.OutOrStdout(), o.Result, *o.Case.Assert.MaxLatencyMs)
 				}
 				printFlakeReport(cmd.OutOrStdout(), o.Result, o.Case.Assert.FlakeStrict != nil && *o.Case.Assert.FlakeStrict)
-				printJudgeFindings(cmd.OutOrStdout(), o.Result.JudgeFindings)
+				printJudgeFindings(cmd.OutOrStdout(), o.Result.JudgeFindings, o.Result.JudgeSampleDetail, verbose)
 				printRedteamFindings(cmd.OutOrStdout(), o.Result.RedteamFindings)
 				if o.IsNewRegression {
 					if autoBisectFlag {
@@ -256,6 +256,7 @@ func newRegressCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&uploadFlag, "upload", false, "upload results to the SkillCI dashboard")
 	cmd.Flags().BoolVar(&autoBisectFlag, "auto-bisect", false, "automatically run skillci bisect on every new regression instead of just printing the suggested command")
 	cmd.Flags().BoolVar(&openPRFlag, "open-pr", false, "commit generated eval case(s) to a new branch and open a pull request, instead of just writing a file the user has to notice and commit themselves")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "show per-sample judge vote breakdown and split-vote warnings")
 	return cmd
 }
 

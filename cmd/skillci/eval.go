@@ -15,6 +15,7 @@ import (
 
 func newEvalCmd() *cobra.Command {
 	var model string
+	var verbose bool
 	cmd := &cobra.Command{
 		Use:          "eval [path]",
 		Short:        "Run a skill's eval suite against a single model",
@@ -72,7 +73,7 @@ func newEvalCmd() *cobra.Command {
 					printLatencyWarning(cmd.OutOrStdout(), result, *c.Assert.MaxLatencyMs)
 				}
 				printFlakeReport(cmd.OutOrStdout(), result, c.Assert.FlakeStrict != nil && *c.Assert.FlakeStrict)
-				printJudgeFindings(cmd.OutOrStdout(), result.JudgeFindings)
+				printJudgeFindings(cmd.OutOrStdout(), result.JudgeFindings, result.JudgeSampleDetail, verbose)
 				printRedteamFindings(cmd.OutOrStdout(), result.RedteamFindings)
 			}
 
@@ -83,5 +84,6 @@ func newEvalCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&model, "model", "claude-sonnet-5", "model to evaluate against")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "show per-sample judge vote breakdown and split-vote warnings")
 	return cmd
 }
