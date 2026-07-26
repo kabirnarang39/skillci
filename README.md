@@ -12,7 +12,7 @@
 
 A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
 
-[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [Commands](#commands) · [Status](#status)
+[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Compliance reports](#compliance-evidence-reports) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [Commands](#commands) · [Status](#status)
 
 ## What's inside
 
@@ -30,6 +30,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
 | **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
 | **Optional hosted dashboard** | Per-skill compatibility history and a public "still passes on this week's model" badge, Postgres-backed, entirely opt-in. |
+| **Compliance evidence reports** | `skillci report --compliance nist-ai-rmf\|eu-ai-act` maps eval cases + run history onto NIST AI RMF/EU AI Act's own documentation and testing requirements — evidence for an auditor, not a certification claim. |
 
 ## How this compares
 
@@ -760,6 +761,34 @@ release tags, since the extension versions independently. Requires a
 VSX; best-effort, won't fail the release if missing) before the first tag
 push will actually publish anything.
 
+## Compliance evidence reports
+
+```bash
+skillci report --compliance nist-ai-rmf path/to/your-skill
+skillci report --compliance eu-ai-act path/to/your-skill
+```
+
+Generates a Markdown report mapping a skill's existing eval cases and
+`.skillci/history.json` run history onto a governance framework's own
+documentation/testing requirements — NIST AI RMF's Measure function
+(MEASURE 2.1/2.3/2.6/2.7/2.13) or EU AI Act Articles 11 (technical
+documentation), 12 (automatic record-keeping), and 19/26(6) (six-month
+minimum log retention). Every citation is quoted from the framework's own
+primary-source text, not paraphrased from memory.
+
+**This is evidence, not certification** — skillci cannot certify a skill
+compliant with anything. It reports what testing/logging artifacts
+already exist, for an auditor or governance reviewer to inspect.
+
+One gap the report states plainly rather than glossing over: `history.json`'s
+retention is a **run-count cap** (default 200, configurable via
+`history_retention_runs` in `.skillci.yaml`), not a wall-clock one. Whether
+200 runs actually spans six months depends entirely on how often your CI
+runs `skillci regress` — a high-frequency pipeline needs a proportionally
+higher `history_retention_runs` to genuinely satisfy the EU AI Act's
+six-month minimum, and skillci doesn't (yet) offer time-based retention as
+an alternative.
+
 ## For AI agents: the skillci-guardrails skill
 
 Most `SKILL.md` files today are written or edited by an agent, not typed
@@ -796,6 +825,7 @@ having to ask for it each time.
 | `skillci diff` | Show a case's pending snapshot change against its golden baseline |
 | `skillci fuzz` | Run mutation-based robustness testing for fuzz-enabled eval cases |
 | `skillci bisect` | Binary-search a skill's git history for the commit that broke an eval case |
+| `skillci report --compliance <framework>` | Generate a Markdown evidence report (`nist-ai-rmf` or `eu-ai-act`) from eval cases + run history — evidence, not certification |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
 
 ## The full case for this

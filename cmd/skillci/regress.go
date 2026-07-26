@@ -147,7 +147,7 @@ func newRegressCmd() *cobra.Command {
 			newRun.Timestamp = time.Now()
 			newRun.CommitSHA = currentSHA
 
-			hist.Append(newRun)
+			hist.Append(newRun, cfg.HistoryRetentionRuns)
 			if err := hist.Save(historyPath); err != nil {
 				return err
 			}

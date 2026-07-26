@@ -48,20 +48,33 @@ func Load(path string) (History, error) {
 	return h, nil
 }
 
-// maxRetainedRuns bounds how many historical runs Append keeps, so
-// .skillci/history.json — a git-committed artifact — doesn't grow
-// unbounded across a project's lifetime. Matches the same 200-run window
-// internal/dashboard/store.go's SkillHistory query already treats as
-// "recent history." Only the oldest runs are dropped; bisect's auto
-// good/bad detection still works over whatever window is retained, and a
-// regression older than that needs an explicit --good override, which
-// the CLI already supports.
-const maxRetainedRuns = 200
+// DefaultMaxRetainedRuns bounds how many historical runs Append keeps
+// when maxRuns is 0, so .skillci/history.json — a git-committed artifact
+// — doesn't grow unbounded across a project's lifetime. Matches the same
+// 200-run window internal/dashboard/store.go's SkillHistory query already
+// treats as "recent history." Only the oldest runs are dropped; bisect's
+// auto good/bad detection still works over whatever window is retained,
+// and a regression older than that needs an explicit --good override,
+// which the CLI already supports.
+//
+// This is a run-count cap, not a time-based one: a skill whose CI runs
+// often enough can still fall short of a wall-clock retention window
+// (e.g. the EU AI Act's 6-month minimum for high-risk system logs) even
+// at the default 200. Config's HistoryRetentionRuns lets a team raise
+// this to match their own CI cadence — `skillci report --compliance
+// eu-ai-act` surfaces this gap explicitly rather than silently assuming
+// 200 runs is enough.
+const DefaultMaxRetainedRuns = 200
 
-func (h *History) Append(r Run) {
+// Append records r and drops the oldest runs beyond maxRuns (or
+// DefaultMaxRetainedRuns if maxRuns is 0 or negative).
+func (h *History) Append(r Run, maxRuns int) {
+	if maxRuns <= 0 {
+		maxRuns = DefaultMaxRetainedRuns
+	}
 	h.Runs = append(h.Runs, r)
-	if len(h.Runs) > maxRetainedRuns {
-		h.Runs = h.Runs[len(h.Runs)-maxRetainedRuns:]
+	if len(h.Runs) > maxRuns {
+		h.Runs = h.Runs[len(h.Runs)-maxRuns:]
 	}
 }
 

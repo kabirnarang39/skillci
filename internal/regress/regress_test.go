@@ -78,7 +78,7 @@ func TestRunMatrixFlagsNewRegressionWhenPriorRunPassed(t *testing.T) {
 	hist := history.History{}
 	hist.Append(history.Run{Cases: []history.CaseResult{
 		{Name: "c1", Model: "claude-sonnet-5", Passed: true},
-	}})
+	}}, 0)
 	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
 
 	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, hist)
@@ -997,7 +997,7 @@ func TestRunMatrixAttributesRegressionToTheCorrectModelOnly(t *testing.T) {
 	hist.Append(history.Run{Cases: []history.CaseResult{
 		{Name: "c1", Model: "model-a", Passed: true},
 		{Name: "c1", Model: "model-b", Passed: true},
-	}})
+	}}, 0)
 	cfg := config.Config{Models: []string{"model-a", "model-b"}, FailOn: "regression"}
 
 	report, newRun, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, hist)

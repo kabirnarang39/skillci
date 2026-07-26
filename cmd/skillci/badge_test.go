@@ -29,7 +29,7 @@ func TestBadgeCmdWritesPassingSVGWhenAllCasesPassed(t *testing.T) {
 	h.Append(history.Run{CommitSHA: "abc123", Cases: []history.CaseResult{
 		{Name: "case-a", Model: "claude-sonnet-5", Passed: true},
 		{Name: "case-b", Model: "claude-sonnet-5", Passed: true},
-	}})
+	}}, 0)
 	if err := h.Save(filepath.Join(dir, ".skillci", "history.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestBadgeCmdWritesRegressedSVGWhenAllCasesFailed(t *testing.T) {
 	h := history.History{}
 	h.Append(history.Run{CommitSHA: "abc123", Cases: []history.CaseResult{
 		{Name: "case-a", Model: "claude-sonnet-5", Passed: false},
-	}})
+	}}, 0)
 	if err := h.Save(filepath.Join(dir, ".skillci", "history.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestBadgeCmdWritesPartialSVGWhenSomeCasesFailed(t *testing.T) {
 	h.Append(history.Run{CommitSHA: "abc123", Cases: []history.CaseResult{
 		{Name: "case-a", Model: "claude-sonnet-5", Passed: true},
 		{Name: "case-b", Model: "claude-sonnet-5", Passed: false},
-	}})
+	}}, 0)
 	if err := h.Save(filepath.Join(dir, ".skillci", "history.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestBadgeCmdDefaultsPathToCurrentDirectory(t *testing.T) {
 	h := history.History{}
 	h.Append(history.Run{CommitSHA: "abc123", Cases: []history.CaseResult{
 		{Name: "case-a", Model: "claude-sonnet-5", Passed: true},
-	}})
+	}}, 0)
 	if err := h.Save(filepath.Join(dir, ".skillci", "history.json")); err != nil {
 		t.Fatal(err)
 	}

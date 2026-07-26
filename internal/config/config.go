@@ -37,6 +37,14 @@ type Config struct {
 	// specific rules (or everything) to hard-fail, instead of an
 	// all-or-nothing cutover the first time it's wired in.
 	Lint LintPolicy `yaml:"lint"`
+	// HistoryRetentionRuns overrides how many runs .skillci/history.json
+	// retains (default 200 — see internal/history.DefaultMaxRetainedRuns).
+	// This is a run-count cap, not a wall-clock one: a skill whose CI
+	// runs often enough can still fall short of a time-based retention
+	// requirement (e.g. the EU AI Act's 6-month minimum for high-risk
+	// system logs) even at the default. Raise this to match your own CI
+	// cadence if that matters to you.
+	HistoryRetentionRuns int `yaml:"history_retention_runs"`
 }
 
 // LintPolicy is `skillci check`'s severity/blocking configuration.

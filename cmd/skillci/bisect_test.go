@@ -255,8 +255,8 @@ func TestBisectCmdAutoResolvesFromHistory(t *testing.T) {
 	defer srv.Close()
 
 	h := history.History{}
-	h.Append(history.Run{CommitSHA: shas[0], Cases: []history.CaseResult{{Name: "haiku-case", Model: "claude-sonnet-5", Passed: true}}})
-	h.Append(history.Run{CommitSHA: shas[3], Cases: []history.CaseResult{{Name: "haiku-case", Model: "claude-sonnet-5", Passed: false}}})
+	h.Append(history.Run{CommitSHA: shas[0], Cases: []history.CaseResult{{Name: "haiku-case", Model: "claude-sonnet-5", Passed: true}}}, 0)
+	h.Append(history.Run{CommitSHA: shas[3], Cases: []history.CaseResult{{Name: "haiku-case", Model: "claude-sonnet-5", Passed: false}}}, 0)
 	if err := h.Save(filepath.Join(dir, ".skillci", "history.json")); err != nil {
 		t.Fatal(err)
 	}
@@ -553,7 +553,7 @@ func TestResolveBadSHAFallsBackToHEADWhenNoHistory(t *testing.T) {
 func TestResolveBadSHAUsesLastRunCommitWhenPresent(t *testing.T) {
 	dir, _ := setupBisectRepo(t)
 	h := history.History{}
-	h.Append(history.Run{CommitSHA: "recorded-sha"})
+	h.Append(history.Run{CommitSHA: "recorded-sha"}, 0)
 
 	got, err := resolveBadSHA(h, dir)
 	if err != nil {

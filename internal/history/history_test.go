@@ -62,7 +62,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 		Cases: []CaseResult{
 			{Name: "case-a", Model: "claude-sonnet-5", Passed: true},
 		},
-	})
+	}, 0)
 
 	if err := h.Save(path); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -79,8 +79,8 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 
 func TestLastRun(t *testing.T) {
 	h := History{}
-	h.Append(Run{CommitSHA: "first"})
-	h.Append(Run{CommitSHA: "second"})
+	h.Append(Run{CommitSHA: "first"}, 0)
+	h.Append(Run{CommitSHA: "second"}, 0)
 
 	last, ok := h.LastRun()
 	if !ok || last.CommitSHA != "second" {
@@ -99,32 +99,63 @@ func TestLastRunEmpty(t *testing.T) {
 func TestAppendCapsRetainedRuns(t *testing.T) {
 	h := History{}
 	// One more than the cap, each uniquely identifiable by CommitSHA.
-	for i := 0; i < maxRetainedRuns+1; i++ {
-		h.Append(Run{CommitSHA: string(rune('A'+i%26)) + string(rune(i))})
+	for i := 0; i < DefaultMaxRetainedRuns+1; i++ {
+		h.Append(Run{CommitSHA: string(rune('A'+i%26)) + string(rune(i))}, 0)
 	}
-	if len(h.Runs) != maxRetainedRuns {
-		t.Fatalf("len(Runs) = %d, want %d (the cap)", len(h.Runs), maxRetainedRuns)
+	if len(h.Runs) != DefaultMaxRetainedRuns {
+		t.Fatalf("len(Runs) = %d, want %d (the cap)", len(h.Runs), DefaultMaxRetainedRuns)
 	}
 }
 
 func TestAppendCapKeepsNewestRunsNotOldest(t *testing.T) {
 	h := History{}
-	for i := 0; i < maxRetainedRuns+5; i++ {
-		h.Append(Run{CommitSHA: "run-" + string(rune('0'+i%10))})
+	for i := 0; i < DefaultMaxRetainedRuns+5; i++ {
+		h.Append(Run{CommitSHA: "run-" + string(rune('0'+i%10))}, 0)
 	}
 	last, ok := h.LastRun()
 	if !ok {
 		t.Fatal("LastRun() ok = false, want true")
 	}
-	// The very last Append call (index maxRetainedRuns+4) must survive the
+	// The very last Append call (index DefaultMaxRetainedRuns+4) must survive the
 	// cap — proving the retained window is the newest runs, not just an
 	// arbitrary truncation to the front.
-	wantSuffix := "run-" + string(rune('0'+(maxRetainedRuns+4)%10))
+	wantSuffix := "run-" + string(rune('0'+(DefaultMaxRetainedRuns+4)%10))
 	if last.CommitSHA != wantSuffix {
 		t.Errorf("LastRun().CommitSHA = %q, want %q — the cap must drop the OLDEST runs, keeping the most recent one intact", last.CommitSHA, wantSuffix)
 	}
-	if len(h.Runs) != maxRetainedRuns {
-		t.Errorf("len(Runs) = %d, want %d", len(h.Runs), maxRetainedRuns)
+	if len(h.Runs) != DefaultMaxRetainedRuns {
+		t.Errorf("len(Runs) = %d, want %d", len(h.Runs), DefaultMaxRetainedRuns)
+	}
+}
+
+// TestAppendCustomMaxRunsOverridesDefault proves maxRuns is a real,
+// honored override — not just accepted and ignored — the mechanism a
+// team with a fast CI cadence depends on to keep enough history to span
+// a wall-clock retention window (e.g. the EU AI Act's 6-month minimum)
+// that the 200-run default might not reach.
+func TestAppendCustomMaxRunsOverridesDefault(t *testing.T) {
+	h := History{}
+	for i := 0; i < 5; i++ {
+		h.Append(Run{CommitSHA: "run-" + string(rune('0'+i))}, 3)
+	}
+	if len(h.Runs) != 3 {
+		t.Fatalf("len(Runs) = %d, want 3 (the custom cap, not the 200 default)", len(h.Runs))
+	}
+	last, _ := h.LastRun()
+	if last.CommitSHA != "run-4" {
+		t.Errorf("LastRun().CommitSHA = %q, want run-4 — a custom cap must still keep the newest runs, not the oldest", last.CommitSHA)
+	}
+}
+
+// TestAppendZeroMaxRunsFallsBackToDefault proves 0 means "use
+// DefaultMaxRetainedRuns," not "cap at zero runs" — the value every
+// existing .skillci.yaml (with no history_retention_runs set) implicitly
+// passes, so this must never silently discard all history.
+func TestAppendZeroMaxRunsFallsBackToDefault(t *testing.T) {
+	h := History{}
+	h.Append(Run{CommitSHA: "only-run"}, 0)
+	if len(h.Runs) != 1 {
+		t.Fatalf("len(Runs) = %d, want 1 — maxRuns=0 must fall back to the default cap, not truncate to zero", len(h.Runs))
 	}
 }
 
