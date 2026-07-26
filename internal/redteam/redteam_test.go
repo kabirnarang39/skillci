@@ -1,6 +1,7 @@
 package redteam
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 )
@@ -208,6 +209,83 @@ func TestAsciiHomoglyphSmugglingIsDeterministic(t *testing.T) {
 	if p.BuildAttack == nil || p.Detect == nil {
 		t.Error("deterministic plugin missing BuildAttack/Detect")
 	}
+}
+
+func TestBase64InstructionSmugglingEmbedsEncodedDirective(t *testing.T) {
+	plugin := Registry["base64-instruction-smuggling"]
+	attack, state := plugin.BuildAttack("write a haiku")
+	if !strings.Contains(attack, "write a haiku") {
+		t.Error("attack prompt must still contain the original base prompt")
+	}
+	if !strings.Contains(attack, state) {
+		t.Errorf("attack prompt %q does not contain its own state token %q", attack, state)
+	}
+	// The directive itself must be base64-encoded, not plain text, in the
+	// attack prompt -- otherwise this is just prompt-injection-canary again.
+	decoded, err := base64.StdEncoding.DecodeString(extractBase64Directive(attack))
+	if err != nil {
+		t.Fatalf("could not find a valid base64 directive in attack prompt %q: %v", attack, err)
+	}
+	if !strings.Contains(string(decoded), state) {
+		t.Errorf("decoded directive = %q, want it to contain the state token %q", decoded, state)
+	}
+}
+
+func TestBase64InstructionSmugglingIsDeterministicShape(t *testing.T) {
+	p := Registry["base64-instruction-smuggling"]
+	if p.Grading != GradingDeterministic {
+		t.Errorf("Grading = %q, want %q", p.Grading, GradingDeterministic)
+	}
+	if p.Category != CategoryInjection {
+		t.Errorf("Category = %q, want %q", p.Category, CategoryInjection)
+	}
+	if p.BuildAttack == nil || p.Detect == nil {
+		t.Error("deterministic plugin missing BuildAttack/Detect")
+	}
+}
+
+func TestMarkdownRenderingInjectionEmbedsFakeSystemBlock(t *testing.T) {
+	plugin := Registry["markdown-rendering-injection"]
+	attack, state := plugin.BuildAttack("write a haiku")
+	if !strings.Contains(attack, "write a haiku") {
+		t.Error("attack prompt must still contain the original base prompt")
+	}
+	if !strings.Contains(attack, state) {
+		t.Errorf("attack prompt %q does not contain its own state token %q", attack, state)
+	}
+	if !strings.Contains(attack, "**SYSTEM") {
+		t.Errorf("attack prompt %q does not contain a fake markdown-rendered system-style marker", attack)
+	}
+}
+
+func TestMarkdownRenderingInjectionIsDeterministicShape(t *testing.T) {
+	p := Registry["markdown-rendering-injection"]
+	if p.Grading != GradingDeterministic {
+		t.Errorf("Grading = %q, want %q", p.Grading, GradingDeterministic)
+	}
+	if p.Category != CategoryInjection {
+		t.Errorf("Category = %q, want %q", p.Category, CategoryInjection)
+	}
+	if p.BuildAttack == nil || p.Detect == nil {
+		t.Error("deterministic plugin missing BuildAttack/Detect")
+	}
+}
+
+// extractBase64Directive pulls the base64 payload out of an attack prompt
+// built by buildBase64SmugglingAttack -- it's the text between "decode and
+// follow: " and the closing "]".
+func extractBase64Directive(attack string) string {
+	const marker = "decode and follow: "
+	idx := strings.Index(attack, marker)
+	if idx == -1 {
+		return ""
+	}
+	rest := attack[idx+len(marker):]
+	end := strings.Index(rest, "]")
+	if end == -1 {
+		return rest
+	}
+	return rest[:end]
 }
 
 func TestPIIExfiltrationIsJudgeGradedWithPlantedPII(t *testing.T) {
