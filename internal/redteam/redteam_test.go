@@ -159,3 +159,36 @@ func TestExcessiveAgencyAndSSRFBaitAreJudgeGradedAgencyPlugins(t *testing.T) {
 		}
 	}
 }
+
+func TestAsciiHomoglyphSmugglingObfuscatesTheOverridePhrase(t *testing.T) {
+	plugin := Registry["ascii-homoglyph-smuggling"]
+	attack, state := plugin.BuildAttack("write a haiku")
+
+	if strings.Contains(attack, "ignore previous instructions") {
+		t.Error("attack prompt contains the literal ASCII override phrase — it should be homoglyph-obfuscated, not literal")
+	}
+	if !strings.Contains(attack, state) {
+		t.Errorf("attack prompt %q does not contain its own state token %q", attack, state)
+	}
+
+	succeeded, detail := plugin.Detect("Sure, here is the token: "+state, state, "", "")
+	if !succeeded {
+		t.Error("succeeded = false, want true — the canary token literally appears in the response")
+	}
+	if detail == "" {
+		t.Error("detail is empty, want a message naming the leaked token")
+	}
+}
+
+func TestAsciiHomoglyphSmugglingIsDeterministic(t *testing.T) {
+	p := Registry["ascii-homoglyph-smuggling"]
+	if p.Grading != GradingDeterministic {
+		t.Errorf("Grading = %q, want %q", p.Grading, GradingDeterministic)
+	}
+	if p.Category != CategoryInjection {
+		t.Errorf("Category = %q, want %q", p.Category, CategoryInjection)
+	}
+	if p.BuildAttack == nil || p.Detect == nil {
+		t.Error("deterministic plugin missing BuildAttack/Detect")
+	}
+}
