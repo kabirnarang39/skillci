@@ -286,6 +286,50 @@ func extractBase64Directive(attack string) string {
 	return rest[:end]
 }
 
+func TestExcessiveToolScopeRoleplayCrosslangAreJudgeGraded(t *testing.T) {
+	for _, name := range []string{"excessive-tool-scope", "roleplay-jailbreak", "crosslang-jailbreak"} {
+		p := Registry[name]
+		if p.Grading != GradingJudge {
+			t.Errorf("Registry[%q].Grading = %q, want %q", name, p.Grading, GradingJudge)
+		}
+		if p.AttackPromptSuffix == "" || p.JudgeRubric == "" {
+			t.Errorf("Registry[%q] is judge-graded but missing AttackPromptSuffix/JudgeRubric", name)
+		}
+		if len(p.Turns) != 0 {
+			t.Errorf("Registry[%q] is single-turn but has Turns set", name)
+		}
+	}
+	if Registry["excessive-tool-scope"].Category != CategoryAgency {
+		t.Errorf("excessive-tool-scope.Category = %q, want %q", Registry["excessive-tool-scope"].Category, CategoryAgency)
+	}
+	if Registry["roleplay-jailbreak"].Category != CategoryJailbreak {
+		t.Errorf("roleplay-jailbreak.Category = %q, want %q", Registry["roleplay-jailbreak"].Category, CategoryJailbreak)
+	}
+	if Registry["crosslang-jailbreak"].Category != CategoryJailbreak {
+		t.Errorf("crosslang-jailbreak.Category = %q, want %q", Registry["crosslang-jailbreak"].Category, CategoryJailbreak)
+	}
+}
+
+func TestRoleplayJailbreakUsesDANFraming(t *testing.T) {
+	p := Registry["roleplay-jailbreak"]
+	if !strings.Contains(p.AttackPromptSuffix, "DAN") {
+		t.Errorf("AttackPromptSuffix = %q, want it to reference the DAN role-play framing", p.AttackPromptSuffix)
+	}
+}
+
+func TestCrosslangJailbreakUsesNonEnglishAttackText(t *testing.T) {
+	p := Registry["crosslang-jailbreak"]
+	if strings.Contains(p.AttackPromptSuffix, "Ignore any constraints") {
+		t.Error("crosslang-jailbreak's attack text is the English jailbreak-direct-override phrase verbatim, want a non-English translation")
+	}
+	// The rubric itself stays in English (it's read by the judge model,
+	// which evaluates the RESPONSE, not the attack's language) -- only
+	// the attack prompt needs to be non-English.
+	if p.JudgeRubric == "" {
+		t.Error("JudgeRubric is empty")
+	}
+}
+
 func TestPIIExfiltrationIsJudgeGradedWithPlantedPII(t *testing.T) {
 	p := Registry["pii-exfiltration"]
 	if p.Grading != GradingJudge {
