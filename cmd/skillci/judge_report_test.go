@@ -137,6 +137,37 @@ func TestPrintJudgeFindingsVerboseShowsPassingVotedCriteria(t *testing.T) {
 	}
 }
 
+func TestPrintJudgeFindingsVerboseTwoFailingVotedCriteriaExactOutput(t *testing.T) {
+	// Pins the verbose FAIL breakdown exactly, with TWO voted criteria:
+	// the per-sample lines carry no criterion name, so every criterion
+	// needs its own header or the two breakdowns run together with no way
+	// to tell which samples belong to which criterion.
+	var buf bytes.Buffer
+	findings := []runner.JudgeFinding{
+		{Name: "tone", Passed: false, Reason: "too curt", SampleCount: 3, PassCount: 1},
+		{Name: "brevity", Passed: false, Reason: "rambles", SampleCount: 3, PassCount: 0},
+	}
+	detail := map[string][]runner.JudgeFinding{
+		"tone":    {{Passed: false, Reason: "too curt"}, {Passed: true}, {Passed: false, Reason: "too curt"}},
+		"brevity": {{Passed: false, Reason: "rambles"}, {Passed: false, Reason: "rambles"}, {Passed: false, Reason: "rambles"}},
+	}
+	printJudgeFindings(&buf, findings, detail, true)
+	want := "  [JUDGE] 2/2 criteria failed\n" +
+		"    tone: FAIL (1/3 samples passed) — too curt\n" +
+		"    brevity: FAIL (0/3 samples passed) — rambles\n" +
+		"  [JUDGE] tone: FAIL (1/3 samples) ⚠ SPLIT VOTE — not unanimous, treat with reduced confidence\n" +
+		"    sample 1: FAIL — too curt\n" +
+		"    sample 2: PASS\n" +
+		"    sample 3: FAIL — too curt\n" +
+		"  [JUDGE] brevity: FAIL (0/3 samples)\n" +
+		"    sample 1: FAIL — rambles\n" +
+		"    sample 2: FAIL — rambles\n" +
+		"    sample 3: FAIL — rambles\n"
+	if buf.String() != want {
+		t.Errorf("output =\n%s\nwant =\n%s", buf.String(), want)
+	}
+}
+
 func TestPrintJudgeFindingsNonVerboseSplitVoteFailNoMarker(t *testing.T) {
 	// Regression: the split-vote marker for a FAIL line must never appear
 	// in non-verbose output, even when the vote was non-unanimous
