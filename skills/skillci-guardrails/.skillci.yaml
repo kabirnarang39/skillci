@@ -1,0 +1,2 @@
+models: [claude-sonnet-5]
+fail_on: any_fail

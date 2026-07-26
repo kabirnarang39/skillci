@@ -1,0 +1,5 @@
+name: "guardrails-triggers-on-frontmatter-review"
+prompt: "Can you review the description in this Claude Skill's frontmatter? I just edited it and want to make sure the triggers still make sense."
+skill_under_test: "skillci-guardrails"
+assert:
+  triggered: true

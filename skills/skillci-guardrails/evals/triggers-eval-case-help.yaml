@@ -1,0 +1,5 @@
+name: "guardrails-triggers-on-eval-case-request"
+prompt: "I need to add eval cases for a Claude Skill I just created — what kind of assertions should I write?"
+skill_under_test: "skillci-guardrails"
+assert:
+  triggered: true

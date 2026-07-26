@@ -1,0 +1,5 @@
+name: "guardrails-does-not-trigger-on-unrelated-python-question"
+prompt: "What's a good Python library for parsing large CSV files efficiently?"
+skill_under_test: "skillci-guardrails"
+assert:
+  triggered: false

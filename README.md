@@ -817,6 +817,41 @@ you'd rather not add a marketplace source. Either way, once installed,
 every skill an agent writes in that project gets verified without you
 having to ask for it each time.
 
+### Dogfooding: skillci tests its own skill
+
+**User story:** as a maintainer editing `skillci-guardrails`'s
+description or triggers, I want confidence the edit doesn't silently
+break which prompts fire the skill, so I use skillci's own eval framework
+to test it — the exact tool this skill tells every other skill to use.
+
+[`skills/skillci-guardrails/evals/`](skills/skillci-guardrails/evals)
+has 5 real cases: three prompts that should trigger the skill (writing a
+new `SKILL.md`, reviewing a frontmatter description, asking which eval
+assertion to use) and two that deliberately shouldn't (an unrelated
+Python/CSV question, an unrelated SQL question) — the negative cases
+matter because a meta-skill with a broad description risks over-firing on
+prompts it has no business claiming.
+
+skillci's eval harness tests exactly the trigger-matching problem this
+implies: `internal/runner.RunCase` sends the model *only* the skill's
+`name`+`description` (never the body) and asks whether it would invoke
+the skill — a direct proxy for Claude's real progressive-disclosure
+mechanism, where only name+description are in context until a skill
+actually fires. Run it yourself:
+
+```bash
+skillci eval skills/skillci-guardrails
+```
+
+Needs your own `ANTHROPIC_API_KEY` to produce real evidence — that part
+is deliberately not faked here. What's already verified without one:
+`skillci check skills/skillci-guardrails` passes clean, and every case's
+YAML is schema-valid (`evalspec.LoadDir` loads all 5 without error). The
+actual trigger-accuracy signal — does a real model agree with these
+expectations — is exactly what running `eval` with a real key gives you,
+and generates a real `.skillci/history.json`/badge the same way any other
+skill's regression history would.
+
 ## MCP server
 
 `skillci mcp-serve` runs skillci as a [Model Context Protocol](https://modelcontextprotocol.io)

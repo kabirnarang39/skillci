@@ -24,55 +24,40 @@ fact:
   into every caller's trigger-matching budget).
 - **Never instruct piping a downloaded script straight into a shell
   interpreter**, and never reference an unpinned `:latest`/`@latest`
-  dependency — both are OWASP AST01/AST02 patterns skillci's static scan
-  flags, and both are real risk, not just lint noise.
+  dependency — OWASP AST01/AST02, both real risk, not just lint noise.
 - **Don't request network access to non-localhost hosts** unless the
-  skill's whole purpose requires it, and say why in the body if it does
-  (AST03).
+  skill's purpose requires it (AST03).
 - **Never fetch remote content and tell the model to treat it as
-  authoritative instructions** (AST05) — if a skill needs to pull shared
-  context from a URL, use frontmatter's `pinned_sources` (a declared
-  `sha256` skillci can verify against on request) instead of an
-  unqualified fetch-and-obey pattern.
+  authoritative instructions** (AST05) — use frontmatter's
+  `pinned_sources` (a declared `sha256`, verifiable on request) instead.
 - **Keep the body lean**: under ~8000 characters, no exact-duplicate
-  instruction lines, no more than ~10 referenced files or ~100KB of
-  referenced content combined. Every extra line loads on every
-  invocation — bloat has a real, ongoing cost, not just a one-time
-  cleanup debt.
+  lines, no more than ~10 referenced files or ~100KB combined. Every
+  extra line loads on every invocation.
 
 ## Step 2 — Verify
 
-Prefer calling skillci's own MCP tools directly if they're available in
-this session (`check`, `eval`, ...) over shelling out — same result,
-lower friction, no risk of misremembering a CLI flag. Fall back to the
-CLI otherwise:
+Prefer calling skillci's own MCP tools directly if available in this
+session (`check`, `eval`, ...) over shelling out. Fall back to the CLI
+otherwise:
 
 ```bash
 skillci check <path-to-skill-dir>
 ```
 
 1. **Always run `check`** — local-only, free, no API calls. Fix every
-   finding before moving on, including Minor/nice-to-have ones; don't
-   leave known findings unaddressed just because the skill "looks fine."
-   If this repo is still piloting skillci non-blocking, `--mode warn` (or
-   `.skillci.yaml`'s `lint.mode`) reports findings without failing —
-   that's a repo-level rollout decision, not a reason to ignore what it
-   reports.
-2. **If eval cases exist, run `eval`** — runs the skill against a real
-   model and checks its assertions. If you just changed trigger phrases
-   or behavior, this is the only way to confirm the change actually
-   works, not just that it reads plausibly.
-3. **If eval cases don't exist yet and the skill is non-trivial, write at
-   least one before calling the work done.** "Non-trivial" means any of:
-   more than one distinct trigger condition, any security-relevant
-   behavior (network calls, running code, handling credentials), or
-   intended for reuse beyond this one session/repo. A skill with zero
-   coverage is the untested code of this domain.
+   finding, including Minor ones. If the repo pilots skillci
+   non-blocking, `--mode warn` (or `.skillci.yaml`'s `lint.mode`) reports
+   without failing — still read and act on the output.
+2. **If eval cases exist, run `eval`** — confirms a trigger/behavior
+   change actually works, not just that it reads plausibly.
+3. **If eval cases don't exist and the skill is non-trivial, write at
+   least one first.** "Non-trivial" means: more than one trigger
+   condition, any security-relevant behavior, or reuse beyond this
+   session.
 4. **If skillci isn't installed**: `go install
    github.com/kabirnarang39/skillci/cmd/skillci@latest` (or see
-   https://github.com/kabirnarang39/skillci#install for Homebrew/Scoop/
-   prebuilt binaries/an MCP client config). Don't skip verification just
-   because the tool isn't on `PATH` yet — install it, then run it.
+   https://github.com/kabirnarang39/skillci#install). Install it, don't
+   skip verification.
 
 ## Step 3 — Pick the right assertion for a new eval case
 
@@ -101,6 +86,36 @@ assert:
   contains: ["autumn"]
 ```
 
+## Step 4 — Beyond check/eval: the rest of the toolkit
+
+check and eval are the two you'll reach for almost every time, but know
+the rest of the surface exists — call these as MCP tools where available,
+or the equivalent CLI command otherwise:
+
+- **`init <path>`** — scaffolds `.skillci.yaml` and an example eval case.
+  Check it doesn't already exist first; run once, the first time a skill
+  gets eval coverage.
+- **`regress <path>`** — the full model-matrix run CI actually gates on,
+  diffed against the last known-good run, failing only on a *new*
+  regression. Normally CI's job, not something to trigger speculatively —
+  but the command to add when wiring up CI for a skill the first time.
+- **`fuzz <path>`** — just the fuzz-enabled cases in isolation, without a
+  full eval pass.
+- **`bisect <case-name> --path <path>`** — finds which commit broke a
+  known-failing case, binary-searching real git history via a `git
+  worktree`. Needs the skill inside a git repo with real commits.
+- **`accept <case-name> --path <path>`** — promotes a `regress`-generated
+  case (or, with `--model`, a pending snapshot change) into permanent
+  coverage. Read what it asserts first — it's evidence a regression
+  happened, not automatically correct behavior to lock in.
+- **`diff <case-name> --path <path>`** — shows a pending snapshot change
+  against its golden baseline without accepting it.
+- **`badge <path>`** — regenerates the SVG status badge; `regress` already
+  does this automatically, rarely needed standalone.
+- **`report --compliance nist-ai-rmf|eu-ai-act <path>`** — a Markdown
+  evidence report (not a certification) for a governance reviewer. Only
+  when someone's actually asking for it.
+
 ## What to do with findings
 
 Fix them, the same way you'd fix a failing test or a lint error before
@@ -110,25 +125,16 @@ to leave them.
 
 ## Don't
 
-- Don't accept a `regress`-generated eval case (`evals/_generated/*.yaml`)
-  blindly — it's evidence that a regression happened, not automatically
-  the correct behavior to lock in as permanent coverage. Read what it
-  actually asserts before `accept`ing it.
 - Don't reach for `judge:` for something `contains:`/`not_contains:`
-  could check for a fraction of the cost — judge criteria cost a model
-  call and are for genuinely subjective quality, not a substitute for a
-  substring check.
+  could check for a fraction of the cost.
 - Don't add `redteam:` to every skill by default — reserve it for skills
-  that fetch external content, execute code, or handle anything
-  security- or credential-adjacent. A static FAQ skill doesn't need
-  adversarial attack plugins.
+  that fetch external content, execute code, or touch anything
+  credential-adjacent.
 - Don't set a `*_strict` flag (`snapshot_strict`, `latency_strict`,
   `flake_strict`, `judge_strict`, `redteam_strict`) without understanding
-  exactly what it gates — each is a no-op without its paired base
-  assertion also set, and skillci's own lint rules will flag that
-  specific footgun, but the flag's *meaning* (this now hard-fails CI) is
-  worth being deliberate about regardless.
+  what it gates — each is a no-op without its paired base assertion also
+  set, and it now hard-fails CI.
 - Don't run `eval`/`regress` speculatively against unrelated skills
   "while you're at it" — scope this to the skill you actually touched.
-- Don't add an elaborate eval suite to a trivial, static skill that has
-  no real trigger logic or security surface to test.
+- Don't add an elaborate eval suite to a trivial, static skill with no
+  real trigger logic or security surface to test.

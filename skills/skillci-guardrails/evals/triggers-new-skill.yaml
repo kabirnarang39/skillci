@@ -1,0 +1,5 @@
+name: "guardrails-triggers-on-new-skill"
+prompt: "I just finished writing a new SKILL.md for a weather-lookup skill — what should I do before I consider it done?"
+skill_under_test: "skillci-guardrails"
+assert:
+  triggered: true
