@@ -184,3 +184,35 @@ func TestRenderEUAIActUsesCustomRetentionValue(t *testing.T) {
 		t.Error("output still shows the default 200 despite a custom override being passed")
 	}
 }
+
+// TestRenderEUAIActSurfacesRedteamEvidence covers the same evidence
+// RenderNISTAIRMF already surfaces under MEASURE 2.7 — the EU report was
+// shipped without it despite Evidence computing it generically, so this
+// is the gap-closing test.
+func TestRenderEUAIActSurfacesRedteamEvidence(t *testing.T) {
+	ev := Evidence{CasesWithRedteam: 2, RedteamPlugins: []string{"crescendo-jailbreak", "prompt-injection-canary"}}
+	out := RenderEUAIAct(ev, "path/to/skill", 0)
+
+	if !strings.Contains(out, "Article 15") {
+		t.Error("output missing an Article 15 (Accuracy, Robustness and Cybersecurity) heading")
+	}
+	if !strings.Contains(out, "crescendo-jailbreak") || !strings.Contains(out, "prompt-injection-canary") {
+		t.Errorf("output = %q, want it to name the redteam plugins in use", out)
+	}
+	if !strings.Contains(out, "2 case(s)") {
+		t.Errorf("output = %q, want it to report the redteam case count", out)
+	}
+}
+
+// TestRenderEUAIActNoRedteamPointsToPlugins covers the empty-evidence
+// case: no redteam: assertions configured should still render a
+// self-explanatory line, not a silently missing section.
+func TestRenderEUAIActNoRedteamPointsToPlugins(t *testing.T) {
+	out := RenderEUAIAct(Evidence{}, "path/to/skill", 0)
+	if !strings.Contains(out, "Article 15") {
+		t.Error("output missing an Article 15 heading even with no redteam evidence")
+	}
+	if !strings.Contains(out, "No `redteam:` assertions configured yet") {
+		t.Errorf("output = %q, want an honest no-evidence-yet line", out)
+	}
+}

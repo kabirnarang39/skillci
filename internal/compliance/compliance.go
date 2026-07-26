@@ -177,5 +177,13 @@ func RenderEUAIAct(ev Evidence, skillDir string, historyRetentionRuns int) strin
 	fmt.Fprintf(&b, "%d runs covers about %.1f months; ", effectiveCap, float64(effectiveCap)/30.4)
 	b.WriteString("a higher-frequency pipeline needs a proportionally higher `history_retention_runs` to genuinely satisfy this window. skillci does not currently offer time-based (as opposed to count-based) retention — verify your own cadence against this requirement rather than assuming the default is sufficient.\n\n")
 
+	b.WriteString("## Article 15 — Accuracy, Robustness and Cybersecurity\n\n")
+	b.WriteString("> High-risk AI systems shall be resilient \"as regards errors, faults or inconsistencies... and as regards attempts by unauthorised third parties to alter their use or performance by exploiting the system vulnerabilities.\"\n\n")
+	if ev.CasesWithRedteam > 0 {
+		fmt.Fprintf(&b, "- %d case(s) run `redteam:` adversarial attack plugins: %s.\n\n", ev.CasesWithRedteam, strings.Join(ev.RedteamPlugins, ", "))
+	} else {
+		b.WriteString("- No `redteam:` assertions configured yet — see the main README for available plugins.\n\n")
+	}
+
 	return b.String()
 }
