@@ -15,6 +15,10 @@ import (
 // prompt sent as a separate model call — a redteam attack probes a
 // different input than the case's own base prompt, so it can't reuse
 // the response RunCase already fetched for the case's other assertions.
+// A judge-graded plugin with Turns set instead sends its attack as a
+// multi-turn conversation, threading history across calls via
+// client.SendConversation — every other plugin shape (deterministic, or
+// judge-graded via AttackPromptSuffix) is a single call as before.
 // Judge-graded plugins are scored through the exact same runJudgeGroup
 // path Judge criteria use: a redteam judge-graded plugin is, mechanically,
 // a JudgeCriterion built from the plugin's rubric. All findings share
@@ -51,12 +55,29 @@ func runRedteamPlugins(ctx context.Context, client *anthropic.Client, model, sys
 			if judgeModel == "" {
 				return nil, fmt.Errorf("case %q uses redteam plugin %q, which requires judge grading, but no judge_model is configured — add judge_model: to .skillci.yaml", c.Name, attack.Plugin)
 			}
-			attackPrompt := c.Prompt + plugin.AttackPromptSuffix
-			msg, err := client.Send(ctx, model, systemPrompt, attackPrompt)
-			if err != nil {
-				return nil, err
+			var content string
+			if len(plugin.Turns) > 0 {
+				var history []anthropic.ConversationTurn
+				var final string
+				for _, step := range plugin.Turns {
+					history = append(history, anthropic.ConversationTurn{Role: "user", Content: step.Message})
+					msg, err := client.SendConversation(ctx, model, systemPrompt, history)
+					if err != nil {
+						return nil, err
+					}
+					history = append(history, anthropic.ConversationTurn{Role: "assistant", Content: msg.Text})
+					final = msg.Text
+				}
+				_, content = parseTriggerMarker(final)
+			} else {
+				attackPrompt := c.Prompt + plugin.AttackPromptSuffix
+				msg, err := client.Send(ctx, model, systemPrompt, attackPrompt)
+				if err != nil {
+					return nil, err
+				}
+				_, content = parseTriggerMarker(msg.Text)
 			}
-			_, content := parseTriggerMarker(msg.Text)
+
 			crit := evalspec.JudgeCriterion{Name: plugin.Name, Criterion: plugin.JudgeRubric}
 			groupFindings, jerr := runJudgeGroup(ctx, client, judgeModel, content, []evalspec.JudgeCriterion{crit})
 			if jerr != nil {
