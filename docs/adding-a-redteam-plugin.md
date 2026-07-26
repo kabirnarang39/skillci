@@ -3,7 +3,8 @@
 `internal/redteam.Registry` is a plain Go map — every entry is one named
 attack technique the `redteam:` eval assertion can reference by name (see
 the README's redteam section for how cases use these). Adding a new one is
-a two-step loop: generate a stub, fill it in, add a test, open a PR.
+a short loop: generate a stub, fill it in, register it, add a test, open a
+PR.
 
 ## 1. Generate a stub
 
