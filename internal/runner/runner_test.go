@@ -2792,6 +2792,102 @@ func TestRunCaseJudgeSamplesMajorityVotePasses(t *testing.T) {
 	}
 }
 
+func TestRunCaseJudgeSamplesPopulatesSampleDetail(t *testing.T) {
+	judgeReplies := []string{
+		"SKILLCI_JUDGE: tone = PASS",
+		"SKILLCI_JUDGE: tone = FAIL: too curt",
+		"SKILLCI_JUDGE: tone = PASS",
+	}
+	judgeCallIdx := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nHi!"
+		if req.Model == "claude-opus-4-8" {
+			text = judgeReplies[judgeCallIdx]
+			judgeCallIdx++
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered:    truePtr(),
+			Judge:        []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+			JudgeSamples: intPtr(3),
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "batched")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	detail, ok := result.JudgeSampleDetail["tone"]
+	if !ok {
+		t.Fatalf("JudgeSampleDetail = %+v, missing \"tone\" key", result.JudgeSampleDetail)
+	}
+	if len(detail) != 3 {
+		t.Fatalf("JudgeSampleDetail[\"tone\"] len = %d, want 3", len(detail))
+	}
+	if !detail[0].Passed || detail[1].Passed || !detail[2].Passed {
+		t.Errorf("JudgeSampleDetail[\"tone\"] = %+v, want [PASS, FAIL, PASS] matching judgeReplies order", detail)
+	}
+	if detail[1].Reason != "too curt" {
+		t.Errorf("JudgeSampleDetail[\"tone\"][1].Reason = %q, want %q", detail[1].Reason, "too curt")
+	}
+}
+
+func TestRunCaseJudgeSingleSampleNoSampleDetail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true\nHi!"
+		if req.Model == "claude-opus-4-8" {
+			text = "SKILLCI_JUDGE: tone = PASS"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "judge-case-no-samples",
+		Prompt: "hi",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Judge:     []evalspec.JudgeCriterion{{Name: "tone", Criterion: "Is it friendly?"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-opus-4-8", "batched")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.JudgeSampleDetail != nil {
+		t.Errorf("JudgeSampleDetail = %+v, want nil — judge_samples was not set (single-sample case)", result.JudgeSampleDetail)
+	}
+}
+
 // TestRunCaseJudgeSamplesTiedVoteNonStrictStillPasses and
 // TestRunCaseJudgeSamplesTiedVoteStrictFails cover an even judge_samples
 // count producing a tie, mirroring flake_strict's tie handling exactly:

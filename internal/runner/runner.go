@@ -61,6 +61,15 @@ type Result struct {
 	// redteam step actually ran (same guard as JudgeFindings) — see the
 	// redteam block in RunCase.
 	RedteamFindings []JudgeFinding
+	// JudgeSampleDetail is nil unless at least one judge criterion group
+	// had judge_samples > 1 (i.e. real voting happened) — maps criterion
+	// name to that criterion's individual per-sample verdicts, in the
+	// exact order samples were taken. Built by transposing groupSamples
+	// (already computed inside the judge block below for voting) — no
+	// new API calls, no new caching, purely additional bookkeeping over
+	// data that already existed and was previously discarded after the
+	// vote.
+	JudgeSampleDetail map[string][]JudgeFinding
 }
 
 // JudgeFinding is one criterion's verdict from the judge model.
@@ -327,6 +336,19 @@ If, given the user's message, you would invoke this skill, begin your response w
 			}
 
 			findings = append(findings, voteJudgeFindings(group, groupSamples)...)
+			if len(groupSamples) > 1 {
+				if result.JudgeSampleDetail == nil {
+					result.JudgeSampleDetail = make(map[string][]JudgeFinding)
+				}
+				for _, crit := range group {
+					result.JudgeSampleDetail[crit.Name] = make([]JudgeFinding, 0, len(groupSamples))
+				}
+				for _, sample := range groupSamples {
+					for j, crit := range group {
+						result.JudgeSampleDetail[crit.Name] = append(result.JudgeSampleDetail[crit.Name], sample[j])
+					}
+				}
+			}
 		}
 		if cacheAvailable && cacheDirty {
 			if err := cache.Save(cachePath); err != nil {
