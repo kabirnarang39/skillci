@@ -796,10 +796,13 @@ Most `SKILL.md` files today are written or edited by an agent, not typed
 by hand — which means the highest-leverage place to enforce skill quality
 isn't a human remembering to run a linter, it's the agent's own workflow.
 [`skills/skillci-guardrails`](skills/skillci-guardrails/SKILL.md) is a
-Claude Skill that makes any Claude Code session automatically run
-`skillci check` — and `skillci eval` where cases exist — every time it
-creates or edits a `SKILL.md`, the same way a pre-commit hook runs a
-linter after any other code change.
+Claude Skill that does both halves of that: teaches an agent to author a
+`SKILL.md` defensively in the first place (the same OWASP-mapped patterns
+and bloat thresholds `check` enforces, so there's nothing to catch after
+the fact), a decision table for which eval assertion actually fits a new
+case, and then runs `skillci check` — and `eval` where cases exist —
+every time it creates or edits a `SKILL.md`, the same way a pre-commit
+hook runs a linter after any other code change.
 
 Install it as a plugin (recommended — Claude Code auto-discovers the
 skill from the plugin, no manual copying):
