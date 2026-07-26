@@ -75,6 +75,82 @@ func isLetter(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
+// eligibleWordIndices returns the index (into strings.Fields(prompt)) of
+// every word whose letters-only form is at least 4 characters — the shared
+// eligibility rule for typo-perturbation, case-mutation, whitespace-
+// obfuscation, and unicode-homoglyph, none of which has a small gating
+// dictionary like synonym-swap's map to naturally bound output on a long
+// prompt. Capped by the caller at maxMutationsPerOperator, not here — this
+// just enumerates candidates in prompt order.
+const maxMutationsPerOperator = 5
+
+func eligibleWordIndices(words []string) []int {
+	var out []int
+	for i, w := range words {
+		bare := strings.TrimFunc(w, func(r rune) bool { return !isLetter(r) })
+		if len(bare) >= 4 {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
+// typoPerturbationMutations transposes each eligible word's 2nd and 3rd
+// characters (write -> wirte) — a fixed, deterministic single-edit typo,
+// not a random one; PromptBench's own taxonomy names unintentional
+// typographical errors as a character-level robustness-sensitivity source.
+func typoPerturbationMutations(prompt string) []Mutation {
+	words := strings.Fields(prompt)
+	indices := eligibleWordIndices(words)
+	var out []Mutation
+	for _, i := range indices {
+		if len(out) >= maxMutationsPerOperator {
+			break
+		}
+		w := words[i]
+		runes := []rune(w)
+		// eligibleWordIndices already guarantees at least 4 letters, so
+		// swapping runes at 1/2 is always in range regardless of any
+		// leading/trailing punctuation captured in w.
+		runes[1], runes[2] = runes[2], runes[1]
+		mutated := make([]string, len(words))
+		copy(mutated, words)
+		mutated[i] = string(runes)
+		out = append(out, Mutation{Operator: "typo-perturbation", Prompt: strings.Join(mutated, " ")})
+	}
+	return out
+}
+
+// caseMutationMutations alternates the case of each eligible word's letters
+// (write -> wRiTe) — a fixed transform, not random shuffling, since
+// Generate's contract requires the same input to always produce the same
+// output. PromptBench: "changing the casing... can have significant
+// impacts on model performance."
+func caseMutationMutations(prompt string) []Mutation {
+	words := strings.Fields(prompt)
+	indices := eligibleWordIndices(words)
+	var out []Mutation
+	for _, i := range indices {
+		if len(out) >= maxMutationsPerOperator {
+			break
+		}
+		w := words[i]
+		runes := []rune(w)
+		for j, r := range runes {
+			if j%2 == 0 {
+				runes[j] = []rune(strings.ToLower(string(r)))[0]
+			} else {
+				runes[j] = []rune(strings.ToUpper(string(r)))[0]
+			}
+		}
+		mutated := make([]string, len(words))
+		copy(mutated, words)
+		mutated[i] = string(runes)
+		out = append(out, Mutation{Operator: "case-mutation", Prompt: strings.Join(mutated, " ")})
+	}
+	return out
+}
+
 // negationMutations emits two mutations: one inserting "don't" before the
 // first verb (the word after a leading "can you"/"could you"/"please", or
 // the prompt's first word otherwise), and one appending a trailing

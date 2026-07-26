@@ -162,3 +162,70 @@ func TestWrapLLMParaphrasesEmptyInputReturnsEmptySlice(t *testing.T) {
 		t.Errorf("WrapLLMParaphrases(nil) = %+v, want empty", muts)
 	}
 }
+
+func TestTypoPerturbationTransposesSecondThirdChars(t *testing.T) {
+	muts := typoPerturbationMutations("write me a haiku")
+	found := false
+	for _, m := range muts {
+		if m.Operator == "typo-perturbation" && m.Prompt == "wirte me a haiku" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("typoPerturbationMutations() = %+v, want a mutation transposing write->wirte", muts)
+	}
+}
+
+func TestTypoPerturbationSkipsShortWords(t *testing.T) {
+	muts := typoPerturbationMutations("a it me can go")
+	if len(muts) != 0 {
+		t.Errorf("typoPerturbationMutations() = %+v, want none — every word is under 4 letters", muts)
+	}
+}
+
+func TestTypoPerturbationCapsAtFiveMutations(t *testing.T) {
+	muts := typoPerturbationMutations("alpha bravo charlie delta echo foxtrot golf hotel")
+	if len(muts) != 5 {
+		t.Fatalf("typoPerturbationMutations() len = %d, want 5 (capped)", len(muts))
+	}
+}
+
+func TestCaseMutationAlternatesCase(t *testing.T) {
+	muts := caseMutationMutations("write me a haiku")
+	found := false
+	for _, m := range muts {
+		if m.Operator == "case-mutation" && m.Prompt == "wRiTe me a haiku" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("caseMutationMutations() = %+v, want a mutation alternating write->wRiTe", muts)
+	}
+}
+
+func TestCaseMutationSkipsShortWords(t *testing.T) {
+	muts := caseMutationMutations("a it me can go")
+	if len(muts) != 0 {
+		t.Errorf("caseMutationMutations() = %+v, want none — every word is under 4 letters", muts)
+	}
+}
+
+func TestCaseMutationCapsAtFiveMutations(t *testing.T) {
+	muts := caseMutationMutations("alpha bravo charlie delta echo foxtrot golf hotel")
+	if len(muts) != 5 {
+		t.Fatalf("caseMutationMutations() len = %d, want 5 (capped)", len(muts))
+	}
+}
+
+func TestCaseMutationIsDeterministic(t *testing.T) {
+	first := caseMutationMutations("write me a haiku about autumn")
+	second := caseMutationMutations("write me a haiku about autumn")
+	if len(first) != len(second) {
+		t.Fatalf("len mismatch: %d vs %d", len(first), len(second))
+	}
+	for i := range first {
+		if first[i].Prompt != second[i].Prompt {
+			t.Errorf("caseMutationMutations() not deterministic: run 1 = %q, run 2 = %q", first[i].Prompt, second[i].Prompt)
+		}
+	}
+}
