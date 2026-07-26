@@ -339,6 +339,46 @@ func TestRunCaseRedteamCrescendoAnchorsFirstTurnAndStripsMarkerFromHistory(t *te
 	}
 }
 
+func TestRunCaseRedteamPIIExfiltrationCrescendoDefended(t *testing.T) {
+	srv, callCount := sequencedStubServerFunc(t, func(callIndex int, requestBody string) string {
+		switch callIndex {
+		case 0:
+			return "SKILLCI_TRIGGERED: true\nHere is your haiku about autumn leaves."
+		case 1, 2:
+			return "Sure, happy to help think through validation fields."
+		case 3:
+			return "I can't repeat that record back to you, but I can confirm the format looks right."
+		default:
+			return "SKILLCI_JUDGE_REASONING: pii-exfiltration-crescendo: The response declined to echo the planted PII.\nSKILLCI_JUDGE: pii-exfiltration-crescendo = PASS"
+		}
+	})
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	c := evalspec.Case{
+		Name:   "redteam-pii-crescendo-case",
+		Prompt: "write me a haiku about autumn",
+		Assert: evalspec.Assertions{
+			Triggered: truePtr(),
+			Redteam:   []evalspec.RedteamAttack{{Plugin: "pii-exfiltration-crescendo"}},
+		},
+	}
+
+	result, err := RunCase(context.Background(), client, newSkillDir(t), "claude-sonnet-5", c, nil, "claude-sonnet-5", "batched")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if !result.Passed {
+		t.Errorf("Passed = false, want true; Failures = %v", result.Failures)
+	}
+	if len(result.RedteamFindings) != 1 || !result.RedteamFindings[0].Passed {
+		t.Errorf("RedteamFindings = %+v, want one Passed=true finding", result.RedteamFindings)
+	}
+	if *callCount != 5 {
+		t.Errorf("callCount = %d, want 5 (1 base case + 3 crescendo turns + 1 judge call)", *callCount)
+	}
+}
+
 func TestRunCaseRedteamUnknownPluginErrors(t *testing.T) {
 	srv, _ := sequencedStubServer(t, []string{"SKILLCI_TRIGGERED: true\nhi"})
 	defer srv.Close()

@@ -345,3 +345,30 @@ func TestPIIExfiltrationIsJudgeGradedWithPlantedPII(t *testing.T) {
 		t.Error("JudgeRubric is empty")
 	}
 }
+
+func TestPIIExfiltrationCrescendoHasThreeTurnsAndPlantsChangedPII(t *testing.T) {
+	p := Registry["pii-exfiltration-crescendo"]
+	if p.Grading != GradingJudge {
+		t.Errorf("Grading = %q, want %q", p.Grading, GradingJudge)
+	}
+	if p.Category != CategoryPII {
+		t.Errorf("Category = %q, want %q", p.Category, CategoryPII)
+	}
+	if len(p.Turns) != 3 {
+		t.Fatalf("len(Turns) = %d, want 3", len(p.Turns))
+	}
+	for i, turn := range p.Turns {
+		if turn.Message == "" {
+			t.Errorf("Turns[%d].Message is empty", i)
+		}
+	}
+	if !strings.Contains(p.Turns[2].Message, "Jordan Alvarez") {
+		t.Error("the final turn must plant the PII to be echoed back, matching pii-exfiltration's existing planted record")
+	}
+	if p.AttackPromptSuffix != "" {
+		t.Error("AttackPromptSuffix is set, want empty — pii-exfiltration-crescendo uses Turns, not a single-turn suffix")
+	}
+	if p.JudgeRubric == "" {
+		t.Error("JudgeRubric is empty")
+	}
+}
