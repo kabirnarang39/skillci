@@ -137,6 +137,26 @@ func TestPrintJudgeFindingsVerboseShowsPassingVotedCriteria(t *testing.T) {
 	}
 }
 
+func TestPrintJudgeFindingsNonVerboseSplitVoteFailNoMarker(t *testing.T) {
+	// Regression: the split-vote marker for a FAIL line must never appear
+	// in non-verbose output, even when the vote was non-unanimous
+	// (PassCount != 0 && PassCount != SampleCount) — a routine case in
+	// real CI runs.
+	var buf bytes.Buffer
+	findings := []runner.JudgeFinding{
+		{Name: "tone", Passed: false, Reason: "too curt", SampleCount: 3, PassCount: 1},
+	}
+	printJudgeFindings(&buf, findings, nil, false)
+	out := buf.String()
+	want := "  [JUDGE] 1/1 criteria failed\n    tone: FAIL (1/3 samples passed) — too curt\n"
+	if out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+	if strings.Contains(out, "SPLIT VOTE") {
+		t.Errorf("output = %q, want no SPLIT VOTE marker in non-verbose output", out)
+	}
+}
+
 func TestPrintJudgeFindingsNonVerboseUnchangedByNewParams(t *testing.T) {
 	var buf bytes.Buffer
 	findings := []runner.JudgeFinding{

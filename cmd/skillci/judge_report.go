@@ -31,11 +31,7 @@ func printJudgeFindings(w io.Writer, findings []runner.JudgeFinding, sampleDetai
 				continue
 			}
 			if f.SampleCount > 1 {
-				splitMarker := ""
-				if f.PassCount != 0 && f.PassCount != f.SampleCount {
-					splitMarker = " ⚠ SPLIT VOTE"
-				}
-				fmt.Fprintf(w, "    %s: FAIL (%d/%d samples passed)%s — %s\n", f.Name, f.PassCount, f.SampleCount, splitMarker, f.Reason)
+				fmt.Fprintf(w, "    %s: FAIL (%d/%d samples passed) — %s\n", f.Name, f.PassCount, f.SampleCount, f.Reason)
 			} else {
 				fmt.Fprintf(w, "    %s: FAIL — %s\n", f.Name, f.Reason)
 			}
@@ -50,9 +46,12 @@ func printJudgeFindings(w io.Writer, findings []runner.JudgeFinding, sampleDetai
 			continue
 		}
 		if !f.Passed {
-			// Already printed above under the FAIL summary — verbose mode
-			// still adds the per-sample breakdown for it below, so it
-			// isn't skipped, just not re-printed as a standalone header.
+			// Base FAIL line already printed above (unconditionally, no
+			// marker) — verbose mode adds the split-vote marker and the
+			// per-sample breakdown here, gated on verbose only.
+			if f.PassCount != 0 && f.PassCount != f.SampleCount {
+				fmt.Fprintf(w, "    %s: ⚠ SPLIT VOTE — not unanimous, treat with reduced confidence\n", f.Name)
+			}
 		} else {
 			splitMarker := ""
 			if f.PassCount != 0 && f.PassCount != f.SampleCount {
