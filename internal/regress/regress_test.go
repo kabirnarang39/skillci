@@ -327,29 +327,16 @@ func TestRunMatrixSnapshotStrictFailureDoesNotProposeGeneratedCase(t *testing.T)
 }
 
 func TestRunMatrixFuzzStrictFailureDoesNotProposeGeneratedCase(t *testing.T) {
-	// Regression test: a fuzz_strict case that flips on its very first run
-	// (no prior history) already has its own report artifact (FuzzFindings)
-	// — RunMatrix must not ALSO propose a generated eval case for the same
-	// finding. Same bug class as the snapshot double-fire fix (c2e9257).
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Messages []struct {
-				Content string `json:"content"`
-			} `json:"messages"`
-		}
-		body, _ := io.ReadAll(r.Body)
-		json.Unmarshal(body, &req)
-		text := "SKILLCI_TRIGGERED: true"
-		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
-			text = "SKILLCI_TRIGGERED: false"
-		}
-		resp := map[string]any{
-			"content": []map[string]string{{"type": "text", "text": text}},
-			"usage":   map[string]int{"input_tokens": 50},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-	}))
+	// Regression test: a fuzz_strict case that fails on its base assertion
+	// (before any mutation even runs — see runner.go's `len(result.Failures)
+	// == 0` fuzz gate, so FuzzFindings stays empty here) must not have
+	// RunMatrix's whole-case-clone path propose a generated eval case for
+	// it. Same bug class as the snapshot double-fire fix (c2e9257).
+	//
+	// This is deliberately NOT the "a mutation flipped" scenario — that's
+	// covered (with the opposite expectation: a GeneratedCase IS proposed,
+	// at the mutation level) by TestRunMatrixFuzzStrictFirstRunFlipProposesGeneratedCase.
+	srv := stubServerAlwaysFails(t)
 	defer srv.Close()
 	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
 
@@ -1048,5 +1035,153 @@ func TestRunMatrixAttributesRegressionToTheCorrectModelOnly(t *testing.T) {
 		default:
 			t.Errorf("newRun.Cases has unexpected model %q", c.Model)
 		}
+	}
+}
+
+// TestRunMatrixFuzzStrictFirstRunFlipProposesGeneratedCase covers the new
+// self-growing fuzz path: a fuzz_strict case's first-ever run (no prior
+// history) that has a flipped mutation must propose a GeneratedCase pinned
+// to that exact mutated prompt — not the base case's original prompt, and
+// not a clone of the base case's own Assert block.
+func TestRunMatrixFuzzStrictFirstRunFlipProposesGeneratedCase(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "c1",
+			Prompt: "Can you write me a haiku?",
+			Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.GeneratedCases) == 0 {
+		t.Fatal("GeneratedCases is empty, want at least one proposed for the flipped negation mutation")
+	}
+	gc := report.GeneratedCases[0]
+	if gc.Case.Prompt == "Can you write me a haiku?" {
+		t.Error("generated case's Prompt is the base case's original prompt, want the mutated prompt that actually flipped")
+	}
+	if !strings.Contains(gc.Case.Prompt, "don't") {
+		t.Errorf("generated case's Prompt = %q, want it to contain the negation mutation's inserted don't", gc.Case.Prompt)
+	}
+	if gc.Case.Assert.Triggered == nil || *gc.Case.Assert.Triggered != true {
+		t.Errorf("generated case's Assert.Triggered = %v, want true (the ORIGINAL case's expected value, not the flipped observed one)", gc.Case.Assert.Triggered)
+	}
+	if gc.Case.Assert.Fuzz != nil {
+		t.Error("generated case's Assert.Fuzz is set, want nil — a self-grown fuzz case must not re-fuzz an already-mutated prompt")
+	}
+	if !strings.HasPrefix(gc.Case.Name, "c1-fuzz-negation-") {
+		t.Errorf("generated case's Name = %q, want prefix c1-fuzz-negation-", gc.Case.Name)
+	}
+}
+
+// TestRunMatrixFuzzFlipWithPriorHistoryDoesNotPropose mirrors the existing
+// hadPrior gate every other generated-case path already uses — a case that
+// has a recorded prior run doesn't propose new fuzz-mutation cases even if
+// a mutation flips, consistent with "first discovery only" semantics.
+func TestRunMatrixFuzzFlipWithPriorHistoryDoesNotPropose(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &req)
+		text := "SKILLCI_TRIGGERED: true"
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "don't") {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "c1",
+			Prompt: "Can you write me a haiku?",
+			Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+	priorHist := history.History{Runs: []history.Run{{Cases: []history.CaseResult{{Name: "c1", Model: "claude-sonnet-5", Passed: false}}}}}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, priorHist)
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.GeneratedCases) != 0 {
+		t.Errorf("GeneratedCases = %+v, want none — this case has prior recorded history, so first-discovery gate should not fire", report.GeneratedCases)
+	}
+}
+
+// TestRunMatrixFuzzFlipsCapAtFiveGeneratedCases proves the cap holds even
+// when far more than 5 mutations flip simultaneously on a genuinely
+// fragile skill's first run.
+func TestRunMatrixFuzzFlipsCapAtFiveGeneratedCases(t *testing.T) {
+	callCount := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		text := "SKILLCI_TRIGGERED: true"
+		if callCount > 1 {
+			text = "SKILLCI_TRIGGERED: false"
+		}
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": text}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	})
+	overSrv := httptest.NewServer(handler)
+	defer overSrv.Close()
+	client := anthropic.NewClient("test-key").WithBaseURL(overSrv.URL)
+
+	cases := []evalspec.Case{
+		{
+			Name:   "fragile",
+			Prompt: "Can you write me a haiku about autumn leaves falling in the wind?",
+			Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr(), FuzzStrict: truePtr()},
+		},
+	}
+	cfg := config.Config{Models: []string{"claude-sonnet-5"}, FailOn: "regression"}
+
+	report, _, err := RunMatrix(context.Background(), client, newSkillDir(t), cfg, cases, history.History{})
+	if err != nil {
+		t.Fatalf("RunMatrix() error = %v", err)
+	}
+	if len(report.GeneratedCases) != 5 {
+		t.Errorf("len(GeneratedCases) = %d, want exactly 5 (capped)", len(report.GeneratedCases))
 	}
 }

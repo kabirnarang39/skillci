@@ -154,6 +154,41 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 						ActualResponse: actualResponse,
 					})
 				}
+
+				// Self-growing fuzz regressions: unlike the block above (which
+				// explicitly excludes fuzz_strict cases — cloning the base
+				// case verbatim would just regenerate the same deterministic
+				// mutation set every time, adding no new information), this
+				// operates at the MUTATION level. A specific mutated prompt
+				// that flipped trigger behavior is new, reviewable
+				// information the case's own report doesn't otherwise
+				// persist anywhere. Capped at 5 per case+model per run so a
+				// genuinely fragile skill's first run can't flood
+				// evals/_generated/ with dozens of files.
+				if !hadPrior && isFuzzStrictCase {
+					const maxFuzzGeneratedCases = 5
+					proposed := 0
+					for i, f := range result.FuzzFindings {
+						if proposed >= maxFuzzGeneratedCases {
+							break
+						}
+						if !f.Flipped {
+							continue
+						}
+						report.GeneratedCases = append(report.GeneratedCases, GeneratedCase{
+							Case: evalspec.Case{
+								Name:           fmt.Sprintf("%s-fuzz-%s-%d-generated-%s", c.Name, f.Mutation.Operator, i, model),
+								Prompt:         f.Mutation.Prompt,
+								SkillUnderTest: c.SkillUnderTest,
+								Assert:         evalspec.Assertions{Triggered: c.Assert.Triggered},
+							},
+							Model:          model,
+							Timestamp:      time.Now(),
+							ActualResponse: fmt.Sprintf("mutation (%s): %q -> triggered=%v (want %v)", f.Mutation.Operator, f.Mutation.Prompt, f.Triggered, *c.Assert.Triggered),
+						})
+						proposed++
+					}
+				}
 			}
 
 			report.Outcomes = append(report.Outcomes, Outcome{
