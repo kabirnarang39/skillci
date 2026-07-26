@@ -41,6 +41,12 @@ and this project follows [Semantic Versioning](https://semver.org/).
   generates a real, compilable stub for a new `internal/redteam.Plugin`
   entry. Paired with `docs/adding-a-redteam-plugin.md`, whose worked
   examples are the scaffold command's own output.
+- 6 new `redteam:` plugins closing all 6 `good first issue` GitHub issues
+  opened alongside `skillci scaffold redteam-plugin` and
+  `docs/adding-a-redteam-plugin.md`: `base64-instruction-smuggling` and
+  `markdown-rendering-injection` (deterministic), `excessive-tool-scope`,
+  `roleplay-jailbreak`, and `crosslang-jailbreak` (judge-graded),
+  `pii-exfiltration-crescendo` (multi-turn) — bringing the total to 16.
 
 ## [v0.5.0] — 2026-07-26
 

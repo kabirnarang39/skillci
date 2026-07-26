@@ -14,3 +14,9 @@ assert:
     - plugin: ascii-homoglyph-smuggling
     - plugin: pii-exfiltration
     - plugin: crescendo-jailbreak
+    - plugin: base64-instruction-smuggling
+    - plugin: markdown-rendering-injection
+    - plugin: excessive-tool-scope
+    - plugin: roleplay-jailbreak
+    - plugin: crosslang-jailbreak
+    - plugin: pii-exfiltration-crescendo

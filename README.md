@@ -25,7 +25,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
 | **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing across all 4 levels of PromptBench's own published attack taxonomy — character (typo, case, whitespace, homoglyph), word (synonym swap), sentence (reorder), and semantic (negation, context-prefix) — for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. A mutation that flips trigger behavior on a case's first run self-grows into a permanent regression case, exactly like a redteam attack does — no competitor persists a fuzzing-discovered failure as permanent CI coverage. |
 | **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample; `flake_always_sample` votes on every case, not just failing ones, to also catch a regression that got lucky on attempt 1. |
-| **Adversarial redteam assertions** | `redteam:` runs named attack plugins — prompt injection, instruction leakage (verbatim and semantic), excessive agency, SSRF-bait, ASCII/homoglyph smuggling, PII exfiltration, direct jailbreak override, multi-turn crescendo jailbreak, and harmful content elicitation — against the skill. Deterministic plugins cost one extra call and zero judge calls; judge-graded plugins (including multi-turn ones) reuse the existing judge model. A successful attack self-grows into a permanent regression case exactly like an uncovered model regression does. |
+| **Adversarial redteam assertions** | `redteam:` runs named attack plugins — prompt injection, instruction leakage (verbatim and semantic), excessive agency, excessive tool scope, SSRF-bait, ASCII/homoglyph smuggling, base64 instruction smuggling, markdown-rendering injection, PII exfiltration (single-turn and multi-turn crescendo), direct jailbreak override, roleplay jailbreak, cross-lingual jailbreak, multi-turn crescendo jailbreak, and harmful content elicitation — against the skill. Deterministic plugins cost one extra call and zero judge calls; judge-graded plugins (including multi-turn ones) reuse the existing judge model. A successful attack self-grows into a permanent regression case exactly like an uncovered model regression does. |
 | **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
 | **Cost & latency budgets** | Fail CI on runaway token count, output length, latency, or estimated dollar cost — not just wrong output. |
 | **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
@@ -46,10 +46,10 @@ Every other tool in this space does one slice of what skillci does — none comb
 | Git-native bisect (binary-search commit history for the culprit) | Yes | No | No | No |
 | LLM-as-judge | Yes — CoT + caching + self-consistency | Yes — rubric-based | No | Yes |
 | Live editor integration | Yes — VS Code | No | No | No |
-| Adversarial/red-team prompt fuzzing | Yes — 10 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
+| Adversarial/red-team prompt fuzzing | Yes — 16 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
 | Hosted dashboard | Yes — opt-in, self-hosted | — | — | Yes (braintrust) |
 
-Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 10, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — a future contributor guide (planned) will cover how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
+Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 16, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — a future contributor guide (planned) will cover how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
 
 ## Why
 
@@ -538,19 +538,25 @@ for what genuinely can't be checked any other way.
 
 Deterministic assertions and judge criteria both test whether a skill behaves
 correctly on *intended* input. `redteam` tests whether it holds up against
-*adversarial* input, across 10 plugins:
+*adversarial* input, across 16 plugins:
 
 | Name | Category | Grading | Calls |
 |---|---|---|---|
 | `prompt-injection-canary` | injection | deterministic | 1 |
 | `ascii-homoglyph-smuggling` | injection | deterministic | 1 |
 | `instruction-leakage` | pii | deterministic | 1 |
+| `base64-instruction-smuggling` | injection | deterministic | 1 |
+| `markdown-rendering-injection` | injection | deterministic | 1 |
 | `jailbreak-direct-override` | jailbreak | judge | 1 + 1 judge |
 | `crescendo-jailbreak` | jailbreak | judge | 3 + 1 judge |
+| `roleplay-jailbreak` | jailbreak | judge | 1 + 1 judge |
+| `crosslang-jailbreak` | jailbreak | judge | 1 + 1 judge |
 | `harmful-content-elicitation` | harmful | judge | 1 + 1 judge |
 | `system-prompt-leak-semantic` | pii | judge | 1 + 1 judge |
 | `pii-exfiltration` | pii | judge | 1 + 1 judge |
+| `pii-exfiltration-crescendo` | pii | judge | 3 + 1 judge |
 | `excessive-agency` | agency | judge | 1 + 1 judge |
+| `excessive-tool-scope` | agency | judge | 1 + 1 judge |
 | `ssrf-bait` | agency | judge | 1 + 1 judge |
 
 ```yaml
