@@ -25,6 +25,7 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newInitCmd())
+	root.AddCommand(newScaffoldCmd())
 	root.AddCommand(newCheckCmd())
 	root.AddCommand(newEvalCmd())
 	root.AddCommand(newRegressCmd())
