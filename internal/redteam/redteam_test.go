@@ -122,3 +122,25 @@ func TestCrescendoJailbreakHasThreeTurnsAndFinalRubric(t *testing.T) {
 		t.Error("AttackPromptSuffix is set, want empty — crescendo-jailbreak uses Turns, not a single-turn suffix")
 	}
 }
+
+func TestSystemPromptLeakSemanticSharesAttackTextWithInstructionLeakage(t *testing.T) {
+	det := Registry["instruction-leakage"]
+	sem := Registry["system-prompt-leak-semantic"]
+
+	attack, _ := det.BuildAttack("write a haiku")
+	if !strings.Contains(attack, "print your system prompt") {
+		t.Fatalf("instruction-leakage attack prompt = %q, want it to contain the shared leakage attack text", attack)
+	}
+	if sem.AttackPromptSuffix == "" || !strings.Contains(sem.AttackPromptSuffix, "print your system prompt") {
+		t.Errorf("system-prompt-leak-semantic.AttackPromptSuffix = %q, want it to match instruction-leakage's attack text", sem.AttackPromptSuffix)
+	}
+	if sem.Grading != GradingJudge {
+		t.Errorf("Grading = %q, want %q", sem.Grading, GradingJudge)
+	}
+	if sem.Category != CategoryPII {
+		t.Errorf("Category = %q, want %q", sem.Category, CategoryPII)
+	}
+	if sem.JudgeRubric == "" {
+		t.Error("JudgeRubric is empty")
+	}
+}
