@@ -49,7 +49,7 @@ Every other tool in this space does one slice of what skillci does — none comb
 | Adversarial/red-team prompt fuzzing | Yes — 10 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
 | Hosted dashboard | Yes — opt-in, self-hosted | — | — | Yes (braintrust) |
 
-Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 10, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — see [adding a redteam plugin](docs/adding-a-redteam-plugin.md) once that doc exists (Month 3) for how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
+Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 10, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — a future contributor guide (planned) will cover how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
 
 ## Why
 
@@ -506,8 +506,20 @@ for what genuinely can't be checked any other way.
 
 Deterministic assertions and judge criteria both test whether a skill behaves
 correctly on *intended* input. `redteam` tests whether it holds up against
-*adversarial* input — prompt injection, direct jailbreak attempts, instruction
-leakage, and harmful content elicitation:
+*adversarial* input, across 10 plugins:
+
+| Name | Category | Grading | Calls |
+|---|---|---|---|
+| `prompt-injection-canary` | injection | deterministic | 1 |
+| `ascii-homoglyph-smuggling` | injection | deterministic | 1 |
+| `instruction-leakage` | pii | deterministic | 1 |
+| `jailbreak-direct-override` | jailbreak | judge | 1 + 1 judge |
+| `crescendo-jailbreak` | jailbreak | judge | 3 + 1 judge |
+| `harmful-content-elicitation` | harmful | judge | 1 + 1 judge |
+| `system-prompt-leak-semantic` | pii | judge | 1 + 1 judge |
+| `pii-exfiltration` | pii | judge | 1 + 1 judge |
+| `excessive-agency` | agency | judge | 1 + 1 judge |
+| `ssrf-bait` | agency | judge | 1 + 1 judge |
 
 ```yaml
 name: "haiku-request-redteam"
@@ -520,24 +532,29 @@ assert:
     - plugin: instruction-leakage
     - plugin: jailbreak-direct-override
     - plugin: harmful-content-elicitation
+    - plugin: system-prompt-leak-semantic
+    - plugin: excessive-agency
+    - plugin: ssrf-bait
+    - plugin: ascii-homoglyph-smuggling
+    - plugin: pii-exfiltration
+    - plugin: crescendo-jailbreak
   redteam_strict: true
 ```
 
-`prompt-injection-canary` and `instruction-leakage` are fully local and
-deterministic — one extra model call each, zero judge calls, zero network
-calls beyond that. Being deterministic, `instruction-leakage` only catches
-*verbatim* leakage of the skill's own `name` and `description` frontmatter
-fields — a paraphrased leak, or a skill with no `description` set, won't be
-caught by it; `system-prompt-leak-semantic` is the judge-graded companion
-plugin that catches a paraphrased or partial leak the deterministic check
-misses.
-`jailbreak-direct-override` and `harmful-content-elicitation`
-reuse the same judge model `judge:` criteria use, and require `judge_model`
-configured the same way. A successful attack is informational only unless
-`redteam_strict: true` — and, same as any other case, a first-time-failing
-redteam case self-grows into a permanent regression under `evals/_generated/`
-via the existing self-growing eval loop, with zero special-casing: a caught
-jailbreak becomes a test that runs forever, not a report you read once.
+The deterministic plugins in the table above are fully local — a pure
+string/token check against the attack response, zero judge calls, zero
+network calls beyond the one attack request. Every judge-graded plugin
+reuses the same judge model `judge:` criteria use, and requires
+`judge_model` configured the same way. "Calls" in the table above is the
+cost of running that one plugin for one case: most are a single extra
+model call (plus one judge call, for judge-graded plugins), but a
+multi-turn plugin sends one call per turn before its judge call — budget
+accordingly if you enable a multi-turn plugin broadly. A successful attack
+is informational only unless `redteam_strict: true` — and, same as any
+other case, a first-time-failing redteam case self-grows into a permanent
+regression under `evals/_generated/` via the existing self-growing eval
+loop, with zero special-casing: a caught jailbreak becomes a test that
+runs forever, not a report you read once.
 
 When a case that used to pass starts failing, `skillci bisect` finds which
 commit in your skill's own git history broke it — the same binary-search

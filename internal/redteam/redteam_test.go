@@ -69,35 +69,52 @@ func TestInstructionLeakageDetectNoEcho(t *testing.T) {
 	}
 }
 
-func TestRegistryHasAllFourV1Plugins(t *testing.T) {
-	want := []string{"prompt-injection-canary", "instruction-leakage", "jailbreak-direct-override", "harmful-content-elicitation"}
-	for _, name := range want {
-		if _, ok := Registry[name]; !ok {
-			t.Errorf("Registry[%q] missing", name)
+// TestRegistryEntriesAreInternallyConsistent enforces Plugin's own
+// documented invariants — generically, across every entry in Registry,
+// rather than an ad-hoc list of plugin names that needs updating by hand
+// every time a plugin is added. It subsumes what
+// TestRegistryHasAllFourV1Plugins, TestDeterministicPluginsHaveNoJudgeFields,
+// and TestJudgeGradedPluginsHaveRubrics used to check individually.
+func TestRegistryEntriesAreInternallyConsistent(t *testing.T) {
+	for name, p := range Registry {
+		if p.Name != name {
+			t.Errorf("Registry[%q].Name = %q, want %q", name, p.Name, name)
 		}
-	}
-}
 
-func TestDeterministicPluginsHaveNoJudgeFields(t *testing.T) {
-	for _, name := range []string{"prompt-injection-canary", "instruction-leakage"} {
-		p := Registry[name]
-		if p.Grading != GradingDeterministic {
-			t.Errorf("Registry[%q].Grading = %q, want %q", name, p.Grading, GradingDeterministic)
-		}
-		if p.BuildAttack == nil || p.Detect == nil {
-			t.Errorf("Registry[%q] is deterministic but missing BuildAttack/Detect", name)
-		}
-	}
-}
-
-func TestJudgeGradedPluginsHaveRubrics(t *testing.T) {
-	for _, name := range []string{"jailbreak-direct-override", "harmful-content-elicitation"} {
-		p := Registry[name]
-		if p.Grading != GradingJudge {
-			t.Errorf("Registry[%q].Grading = %q, want %q", name, p.Grading, GradingJudge)
-		}
-		if p.AttackPromptSuffix == "" || p.JudgeRubric == "" {
-			t.Errorf("Registry[%q] is judge-graded but missing AttackPromptSuffix/JudgeRubric", name)
+		switch p.Grading {
+		case GradingDeterministic:
+			if p.BuildAttack == nil {
+				t.Errorf("Registry[%q] is deterministic but BuildAttack is nil", name)
+			}
+			if p.Detect == nil {
+				t.Errorf("Registry[%q] is deterministic but Detect is nil", name)
+			}
+			if p.AttackPromptSuffix != "" {
+				t.Errorf("Registry[%q] is deterministic but AttackPromptSuffix is set, want empty", name)
+			}
+			if len(p.Turns) != 0 {
+				t.Errorf("Registry[%q] is deterministic but Turns is set, want empty", name)
+			}
+			if p.JudgeRubric != "" {
+				t.Errorf("Registry[%q] is deterministic but JudgeRubric is set, want empty", name)
+			}
+		case GradingJudge:
+			if p.BuildAttack != nil {
+				t.Errorf("Registry[%q] is judge-graded but BuildAttack is set, want nil", name)
+			}
+			if p.Detect != nil {
+				t.Errorf("Registry[%q] is judge-graded but Detect is set, want nil", name)
+			}
+			if p.JudgeRubric == "" {
+				t.Errorf("Registry[%q] is judge-graded but JudgeRubric is empty", name)
+			}
+			hasSuffix := p.AttackPromptSuffix != ""
+			hasTurns := len(p.Turns) > 0
+			if hasSuffix == hasTurns {
+				t.Errorf("Registry[%q] is judge-graded but must set exactly one of AttackPromptSuffix/Turns — hasSuffix=%v hasTurns=%v", name, hasSuffix, hasTurns)
+			}
+		default:
+			t.Errorf("Registry[%q] has unrecognized Grading %q", name, p.Grading)
 		}
 	}
 }

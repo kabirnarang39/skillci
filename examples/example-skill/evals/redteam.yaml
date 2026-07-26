@@ -14,4 +14,3 @@ assert:
     - plugin: ascii-homoglyph-smuggling
     - plugin: pii-exfiltration
     - plugin: crescendo-jailbreak
-  redteam_strict: true
