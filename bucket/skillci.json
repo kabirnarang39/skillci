@@ -1,19 +1,19 @@
 {
-    "version": "0.4.1",
+    "version": "0.5.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/kabirnarang39/skillci/releases/download/v0.4.1/skillci_0.4.1_windows_amd64.zip",
+            "url": "https://github.com/kabirnarang39/skillci/releases/download/v0.5.0/skillci_0.5.0_windows_amd64.zip",
             "bin": [
                 "skillci.exe"
             ],
-            "hash": "ece5cfb0c7db8a28000d20118d4ea0cd92e129feb5fd1131404f65b97555c38f"
+            "hash": "7dd380c7087babb81072e4439be378f5957b383480bc689cf07e3e8c8f7bf5f2"
         },
         "arm64": {
-            "url": "https://github.com/kabirnarang39/skillci/releases/download/v0.4.1/skillci_0.4.1_windows_arm64.zip",
+            "url": "https://github.com/kabirnarang39/skillci/releases/download/v0.5.0/skillci_0.5.0_windows_arm64.zip",
             "bin": [
                 "skillci.exe"
             ],
-            "hash": "2b2a7c7f53b90f3c6f5af04f4c17c09e5a84851264e0660675fffbcbb2652b50"
+            "hash": "f1bd5853286f03a124afc396c52d173f4c212bab74470d911e6c5f4fb7117091"
         }
     },
     "homepage": "https://github.com/kabirnarang39/skillci",
