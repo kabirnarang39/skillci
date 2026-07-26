@@ -8,7 +8,10 @@ package fuzz
 import "strings"
 
 type Mutation struct {
-	Operator string // "synonym-swap" | "negation" | "reorder" | "context-prefix"
+	// Operator is one of: "synonym-swap", "negation", "reorder",
+	// "context-prefix", "typo-perturbation", "case-mutation",
+	// "whitespace-obfuscation", "unicode-homoglyph", "llm-paraphrase".
+	Operator string
 	Prompt   string
 }
 

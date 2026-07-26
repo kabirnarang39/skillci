@@ -20,8 +20,9 @@ and this project follows [Semantic Versioning](https://semver.org/).
 - 4 new `fuzz:` operators (`typo-perturbation`, `case-mutation`,
   `whitespace-obfuscation`, `unicode-homoglyph`) closing skillci's
   character-level robustness-testing gap — together with the 4 existing
-  operators, this now maps onto all 4 levels of PromptBench's published
-  attack taxonomy (character/word/sentence/semantic, arXiv:2306.04528).
+  operators, this now maps onto all 4 levels of the attack taxonomy
+  published by PromptBench (`microsoft/promptbench`, whose paper is titled
+  *PromptRobust*, arXiv:2306.04528) — character/word/sentence/semantic.
   `synonymPairs` grew from 5 to 30 entries. `fuzz.Generate` now also
   returns per-operator `Coverage`, surfaced as a `[FUZZ COVERAGE]` note
   when a prompt had zero applicable mutations across every operator.

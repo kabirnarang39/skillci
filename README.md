@@ -357,13 +357,14 @@ expects. No LLM writes the paraphrases; the mutations are fixed, non-random
 string transformations, so a fuzz run costs nothing beyond the extra model
 calls it makes. Note that `regress` fuzzes every model in your configured
 matrix, so total API calls scale as `models × fuzz-enabled cases × (1 + up
-to 11 mutations)` — the worst case is a 3-sentence prompt that hits all
-four operators (1 synonym-swap + 2 negation + 5 non-identity 3-sentence
-reorderings + 3 context-prefix = 11 mutations), for 12 calls per model per
-case including the primary run. Like `snapshot`, this is informational by default:
+to 31 mutations)` — the worst case is a 3-sentence prompt that hits all
+eight operators (1 synonym-swap + 2 negation + 5 non-identity 3-sentence
+reorderings + 3 context-prefix + 5 each from the four character-level
+operators below = 31 mutations), for 32 calls per model per case including
+the primary run. Like `snapshot`, this is informational by default:
 
 ```
-[FUZZ] 2/9 mutations flipped trigger behavior
+[FUZZ] 2/26 mutations flipped trigger behavior
   negation: "Can you don't write me a haiku about autumn leaves?" -> triggered=false (want true)
 ```
 
@@ -383,8 +384,11 @@ space inserted mid-word), and `unicode-homoglyph` (Cyrillic look-alike
 substitution, the same technique `ascii-homoglyph-smuggling` uses for
 security testing, applied here to robustness instead). Together with the
 original 4 operators, this maps onto all 4 levels of PromptBench's own
-published LLM-robustness taxonomy (character/word/sentence/semantic) —
-see [PromptBench, arXiv:2306.04528](https://arxiv.org/abs/2306.04528).
+published LLM-robustness taxonomy (character/word/sentence/semantic) — see
+[microsoft/promptbench](https://github.com/microsoft/promptbench), whose
+paper is titled *PromptRobust: Towards Evaluating the Robustness of Large
+Language Models on Adversarial Prompts*
+([arXiv:2306.04528](https://arxiv.org/abs/2306.04528)).
 
 A mutation that flips trigger behavior on a `fuzz_strict: true` case's
 first-ever run doesn't just print once and disappear — it self-grows into a
