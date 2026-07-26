@@ -32,6 +32,15 @@ and this project follows [Semantic Versioning](https://semver.org/).
   through the exact same self-growing eval loop `redteam:` already uses —
   a fuzzing-discovered brittle phrasing is now covered forever, not just
   reported once.
+- `--verbose` on `eval`/`regress`: per-sample judge-vote breakdown plus a
+  `⚠ SPLIT VOTE` marker on any non-unanimous multi-sample judge verdict,
+  even a passing one — LLM-judge self-consistency research shows close
+  votes carry real, distinguishable-from-unanimous reliability risk that
+  a bare majority verdict hides.
+- `skillci scaffold redteam-plugin <name> --grading deterministic|judge|multiturn`:
+  generates a real, compilable stub for a new `internal/redteam.Plugin`
+  entry. Paired with `docs/adding-a-redteam-plugin.md`, whose worked
+  examples are the scaffold command's own output.
 
 ## [v0.5.0] — 2026-07-26
 

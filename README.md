@@ -229,6 +229,14 @@ skillci eval path/to/your-skill --model claude-sonnet-5
 skillci regress path/to/your-skill
 ```
 
+`--verbose` additionally prints, for any judge criterion that used
+`judge_samples > 1`, every individual sample's verdict — and flags a
+non-unanimous vote as `⚠ SPLIT VOTE` even when it passed. LLM judges are
+known to disagree with themselves at close-to-coin-flip rates on
+borderline calls; a 2/3 pass and a 3/3 pass are not equally trustworthy,
+and this makes that difference visible instead of collapsing both into
+the same bare "PASS."
+
 What actually fails CI is controlled by `fail_on` in `.skillci.yaml` — three values:
 
 - **`regression`** (the default) — fail only on a case+model that used to pass and now doesn't. A case with no prior recorded run never fails CI on its own; it gets proposed as a generated case instead (see below).
@@ -943,6 +951,7 @@ tool call explicitly sets them.
 | `skillci fuzz` | Run mutation-based robustness testing for fuzz-enabled eval cases |
 | `skillci bisect` | Binary-search a skill's git history for the commit that broke an eval case |
 | `skillci report --compliance <framework>` | Generate a Markdown evidence report (`nist-ai-rmf` or `eu-ai-act`) from eval cases + run history — evidence, not certification |
+| `skillci scaffold redteam-plugin <name> --grading ...` | Generate a starter `internal/redteam.Plugin` stub — see [docs/adding-a-redteam-plugin.md](docs/adding-a-redteam-plugin.md) |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
 | `skillci mcp-serve` | Run every command above as MCP tools over stdio, for agent clients |
 
