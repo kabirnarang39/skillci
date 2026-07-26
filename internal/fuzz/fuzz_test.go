@@ -349,3 +349,29 @@ func TestGenerateCoverageZeroOnFullyIneligiblePrompt(t *testing.T) {
 		}
 	}
 }
+
+func TestSynonymPairsCoversAtLeastTwentyFiveEntries(t *testing.T) {
+	if len(synonymPairs) < 25 {
+		t.Errorf("len(synonymPairs) = %d, want at least 25", len(synonymPairs))
+	}
+}
+
+func TestSynonymPairsIncludesExplainSummarizeDebug(t *testing.T) {
+	want := map[string]string{
+		"explain":   "clarify",
+		"summarize": "condense",
+		"debug":     "troubleshoot",
+		"check":     "verify",
+		"short":     "brief",
+	}
+	for word, expected := range want {
+		got, ok := synonymPairs[word]
+		if !ok {
+			t.Errorf("synonymPairs[%q] missing", word)
+			continue
+		}
+		if got != expected {
+			t.Errorf("synonymPairs[%q] = %q, want %q", word, got, expected)
+		}
+	}
+}
