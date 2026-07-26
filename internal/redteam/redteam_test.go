@@ -101,3 +101,24 @@ func TestJudgeGradedPluginsHaveRubrics(t *testing.T) {
 		}
 	}
 }
+
+func TestCrescendoJailbreakHasThreeTurnsAndFinalRubric(t *testing.T) {
+	p := Registry["crescendo-jailbreak"]
+	if p.Grading != GradingJudge {
+		t.Errorf("Grading = %q, want %q", p.Grading, GradingJudge)
+	}
+	if len(p.Turns) != 3 {
+		t.Fatalf("len(Turns) = %d, want 3", len(p.Turns))
+	}
+	for i, turn := range p.Turns {
+		if turn.Message == "" {
+			t.Errorf("Turns[%d].Message is empty", i)
+		}
+	}
+	if p.JudgeRubric == "" {
+		t.Error("JudgeRubric is empty, want a rubric graded against the final turn's response")
+	}
+	if p.AttackPromptSuffix != "" {
+		t.Error("AttackPromptSuffix is set, want empty — crescendo-jailbreak uses Turns, not a single-turn suffix")
+	}
+}
