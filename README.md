@@ -49,7 +49,7 @@ Every other tool in this space does one slice of what skillci does — none comb
 | Adversarial/red-team prompt fuzzing | Yes — 16 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
 | Hosted dashboard | Yes — opt-in, self-hosted | — | — | Yes (braintrust) |
 
-Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 16, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — a future contributor guide (planned) will cover how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
+Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 16, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — [docs/adding-a-redteam-plugin.md](docs/adding-a-redteam-plugin.md) plus `skillci scaffold redteam-plugin` cover how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
 
 ## Why
 
@@ -544,9 +544,9 @@ correctly on *intended* input. `redteam` tests whether it holds up against
 |---|---|---|---|
 | `prompt-injection-canary` | injection | deterministic | 1 |
 | `ascii-homoglyph-smuggling` | injection | deterministic | 1 |
-| `instruction-leakage` | pii | deterministic | 1 |
 | `base64-instruction-smuggling` | injection | deterministic | 1 |
 | `markdown-rendering-injection` | injection | deterministic | 1 |
+| `instruction-leakage` | pii | deterministic | 1 |
 | `jailbreak-direct-override` | jailbreak | judge | 1 + 1 judge |
 | `crescendo-jailbreak` | jailbreak | judge | 3 + 1 judge |
 | `roleplay-jailbreak` | jailbreak | judge | 1 + 1 judge |

@@ -70,7 +70,7 @@ what actually needs checking:
 | Must produce specific required text | `contains: [...]` |
 | Must never produce certain text | `not_contains: [...]` |
 | Needs subjective/quality judgment a substring match can't express | `judge:` (named rubric criteria, scored by a separate model) |
-| Fetches/executes untrusted content, or is otherwise security-sensitive | `redteam:` (prompt-injection-canary, instruction-leakage, jailbreak-direct-override, harmful-content-elicitation, system-prompt-leak-semantic, excessive-agency, ssrf-bait, ascii-homoglyph-smuggling, pii-exfiltration, crescendo-jailbreak) |
+| Fetches/executes untrusted content, or is otherwise security-sensitive | `redteam:` (named attack plugins across the injection, jailbreak, pii, harmful, and agency categories — see the redteam plugin table in skillci's README for the current list) |
 | Needs to hold up under realistic rewording, not just the exact prompt you tested | `fuzz: true` (add `fuzz_llm: true` for model-generated paraphrases, cached once) |
 | Must not silently change behavior on a model update | `snapshot: true` |
 | Has a real cost/latency/token budget to enforce | `max_cost_usd` / `max_latency_ms` / `max_tokens_loaded` |
