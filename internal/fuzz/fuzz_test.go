@@ -237,7 +237,7 @@ func TestWhitespaceObfuscationInsertsZeroWidthSpace(t *testing.T) {
 	muts := whitespaceObfuscationMutations("write me a haiku")
 	found := false
 	for _, m := range muts {
-		if m.Operator == "whitespace-obfuscation" && strings.Contains(m.Prompt, "wr​ite") {
+		if m.Operator == "whitespace-obfuscation" && strings.Contains(m.Prompt, "wr\u200bite") {
 			found = true
 		}
 	}

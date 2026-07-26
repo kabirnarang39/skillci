@@ -291,7 +291,7 @@ func whitespaceObfuscationMutations(prompt string) []Mutation {
 		}
 		w := words[i]
 		runes := []rune(w)
-		mutatedWord := string(runes[:2]) + "​" + string(runes[2:])
+		mutatedWord := string(runes[:2]) + "\u200b" + string(runes[2:])
 		mutated := make([]string, len(words))
 		copy(mutated, words)
 		mutated[i] = mutatedWord
