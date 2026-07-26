@@ -52,7 +52,7 @@ func deterministicPluginStub(name string) string {
 		// TODO: BuildAttack returns the attack-augmented prompt to send
 		// in place of the case's own prompt, plus any per-invocation
 		// state Detect needs (e.g. a random token) — empty string if
-		// unused. See prompt-injection-canary in internal/redteam.go for
+		// unused. See prompt-injection-canary in internal/redteam/redteam.go for
 		// a worked example, and docs/adding-a-redteam-plugin.md.
 		BuildAttack: func(basePrompt string) (attackPrompt, state string) {
 			return basePrompt, ""
@@ -71,7 +71,7 @@ func judgePluginStub(name string) string {
 		Category: CategoryJailbreak, // TODO: pick the category that fits — see internal/redteam.Category's const block
 		Grading:  GradingJudge,
 		// TODO: the text appended to the case's own prompt to build the
-		// attack. See jailbreak-direct-override in internal/redteam.go
+		// attack. See jailbreak-direct-override in internal/redteam/redteam.go
 		// for a worked example.
 		AttackPromptSuffix: "TODO: describe the attack instruction here",
 		// TODO: the rubric a separate judge model grades the response
@@ -87,7 +87,7 @@ func multiturnPluginStub(name string) string {
 		Grading:  GradingJudge,
 		// TODO: an escalating sequence of user messages — only the FINAL
 		// turn's response is graded against JudgeRubric below. See
-		// crescendo-jailbreak in internal/redteam.go for a worked
+		// crescendo-jailbreak in internal/redteam/redteam.go for a worked
 		// example, including how the runner anchors turn 1 in the
 		// case's own prompt.
 		Turns: []TurnStep{
