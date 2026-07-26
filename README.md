@@ -12,7 +12,7 @@
 
 A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
 
-[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Compliance reports](#compliance-evidence-reports) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [Commands](#commands) · [Status](#status)
+[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Compliance reports](#compliance-evidence-reports) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [MCP server](#mcp-server) · [Commands](#commands) · [Status](#status)
 
 ## What's inside
 
@@ -31,6 +31,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **Live editor linting** | [VS Code extension](#vs-code-extension) lints `SKILL.md` as you type — including unsaved buffer content, not just what's last saved to disk. |
 | **Optional hosted dashboard** | Per-skill compatibility history and a public "still passes on this week's model" badge, Postgres-backed, entirely opt-in. |
 | **Compliance evidence reports** | `skillci report --compliance nist-ai-rmf\|eu-ai-act` maps eval cases + run history onto NIST AI RMF/EU AI Act's own documentation and testing requirements — evidence for an auditor, not a certification claim. |
+| **MCP server** | `skillci mcp-serve` exposes every command as a native MCP tool over stdio — each tool call runs the real cobra command in-process, so it can never drift from the CLI's own behavior. |
 
 ## How this compares
 
@@ -813,6 +814,42 @@ you'd rather not add a marketplace source. Either way, once installed,
 every skill an agent writes in that project gets verified without you
 having to ask for it each time.
 
+## MCP server
+
+`skillci mcp-serve` runs skillci as a [Model Context Protocol](https://modelcontextprotocol.io)
+server over stdio, so an agent calls every skillci command as a native
+tool call instead of shelling out to a CLI it has to remember exists —
+lower friction, and no risk of a model misremembering a flag. This is the
+mechanism the `skillci-guardrails` skill above recommends when an MCP
+client is available; the skill itself still works via the plain CLI if
+it isn't.
+
+Exposes **every** skillci command except `mcp-serve` itself — `init`,
+`check`, `eval`, `regress`, `fuzz`, `bisect`, `accept`, `diff`, `badge`,
+`report` — each tool call runs the real cobra command in-process (not a
+reimplementation), so it can never silently drift from what the
+equivalent CLI invocation does as commands gain new flags over time.
+
+Add to an MCP client's config, pointing at the compiled binary:
+
+```json
+{
+  "mcpServers": {
+    "skillci": {
+      "command": "skillci",
+      "args": ["mcp-serve"]
+    }
+  }
+}
+```
+
+`eval`/`regress`/`fuzz`/`bisect` need `ANTHROPIC_API_KEY` in the server
+process's own environment, same as running those commands from a shell.
+`regress`'s `auto_bisect`/`open_pr` arguments and `check`'s
+`verify_pinned_sources` have real side effects (git bisect, opening a
+pull request, a network call) — off by default, on only if the agent's
+tool call explicitly sets them.
+
 ## Commands
 
 | Command | What it does |
@@ -827,6 +864,7 @@ having to ask for it each time.
 | `skillci bisect` | Binary-search a skill's git history for the commit that broke an eval case |
 | `skillci report --compliance <framework>` | Generate a Markdown evidence report (`nist-ai-rmf` or `eu-ai-act`) from eval cases + run history — evidence, not certification |
 | `skillci badge` | Regenerate the SVG badge from recorded history |
+| `skillci mcp-serve` | Run every command above as MCP tools over stdio, for agent clients |
 
 ## The full case for this
 

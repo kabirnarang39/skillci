@@ -34,6 +34,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newFuzzCmd())
 	root.AddCommand(newBisectCmd())
 	root.AddCommand(newReportCmd())
+	root.AddCommand(newMCPServeCmd())
 	return root
 }
 
