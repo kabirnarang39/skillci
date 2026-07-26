@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.6.0] — 2026-07-26
+
 ### Added
 - 6 new `redteam:` plugins (`system-prompt-leak-semantic`, `excessive-agency`,
   `ssrf-bait`, `ascii-homoglyph-smuggling`, `pii-exfiltration`,
