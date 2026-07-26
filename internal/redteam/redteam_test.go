@@ -144,3 +144,18 @@ func TestSystemPromptLeakSemanticSharesAttackTextWithInstructionLeakage(t *testi
 		t.Error("JudgeRubric is empty")
 	}
 }
+
+func TestExcessiveAgencyAndSSRFBaitAreJudgeGradedAgencyPlugins(t *testing.T) {
+	for _, name := range []string{"excessive-agency", "ssrf-bait"} {
+		p := Registry[name]
+		if p.Grading != GradingJudge {
+			t.Errorf("Registry[%q].Grading = %q, want %q", name, p.Grading, GradingJudge)
+		}
+		if p.Category != CategoryAgency {
+			t.Errorf("Registry[%q].Category = %q, want %q", name, p.Category, CategoryAgency)
+		}
+		if p.AttackPromptSuffix == "" || p.JudgeRubric == "" {
+			t.Errorf("Registry[%q] is judge-graded but missing AttackPromptSuffix/JudgeRubric", name)
+		}
+	}
+}
