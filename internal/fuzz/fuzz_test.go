@@ -1,6 +1,9 @@
 package fuzz
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSynonymSwap(t *testing.T) {
 	muts := Generate("Can you write me a haiku about autumn?")
@@ -227,5 +230,69 @@ func TestCaseMutationIsDeterministic(t *testing.T) {
 		if first[i].Prompt != second[i].Prompt {
 			t.Errorf("caseMutationMutations() not deterministic: run 1 = %q, run 2 = %q", first[i].Prompt, second[i].Prompt)
 		}
+	}
+}
+
+func TestWhitespaceObfuscationInsertsZeroWidthSpace(t *testing.T) {
+	muts := whitespaceObfuscationMutations("write me a haiku")
+	found := false
+	for _, m := range muts {
+		if m.Operator == "whitespace-obfuscation" && strings.Contains(m.Prompt, "wr​ite") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("whitespaceObfuscationMutations() = %+v, want a mutation inserting U+200B into write after the 2nd char", muts)
+	}
+}
+
+func TestWhitespaceObfuscationSkipsShortWords(t *testing.T) {
+	muts := whitespaceObfuscationMutations("a it me can go")
+	if len(muts) != 0 {
+		t.Errorf("whitespaceObfuscationMutations() = %+v, want none — every word is under 4 letters", muts)
+	}
+}
+
+func TestWhitespaceObfuscationCapsAtFiveMutations(t *testing.T) {
+	muts := whitespaceObfuscationMutations("alpha bravo charlie delta echo foxtrot golf hotel")
+	if len(muts) != 5 {
+		t.Fatalf("whitespaceObfuscationMutations() len = %d, want 5 (capped)", len(muts))
+	}
+}
+
+func TestUnicodeHomoglyphSwapsLookalikes(t *testing.T) {
+	muts := unicodeHomoglyphMutations("write me a haiku")
+	wantPrompts := map[string]bool{
+		"writе me a haiku": false, // "write"'s e -> Cyrillic е (U+0435)
+		"write me a hаiku": false, // "haiku"'s a -> Cyrillic а (U+0430)
+	}
+	for _, m := range muts {
+		if m.Operator != "unicode-homoglyph" {
+			continue
+		}
+		if _, ok := wantPrompts[m.Prompt]; ok {
+			wantPrompts[m.Prompt] = true
+		}
+	}
+	for prompt, found := range wantPrompts {
+		if !found {
+			t.Errorf("unicodeHomoglyphMutations() missing %q — every eligible word containing a target letter must get its own mutation", prompt)
+		}
+	}
+}
+
+func TestUnicodeHomoglyphSkipsWordsWithNoTargetLetters(t *testing.T) {
+	// "this" and "such" have no a/e/o/p — nothing eligible to swap even
+	// though both are >= 4 letters.
+	muts := unicodeHomoglyphMutations("this such")
+	if len(muts) != 0 {
+		t.Errorf("unicodeHomoglyphMutations() = %+v, want none — no word contains a/e/o/p", muts)
+	}
+}
+
+func TestUnicodeHomoglyphCapsAtFiveMutations(t *testing.T) {
+	muts := unicodeHomoglyphMutations("alpha bravo charlie delta echo foxtrot golf hotel")
+	if len(muts) != 5 {
+		t.Fatalf("unicodeHomoglyphMutations() len = %d, want 5 (capped)", len(muts))
 	}
 }

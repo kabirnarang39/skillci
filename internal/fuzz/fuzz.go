@@ -277,6 +277,65 @@ func contextPrefixMutations(prompt string) []Mutation {
 	return out
 }
 
+// whitespaceObfuscationMutations inserts a zero-width space (U+200B) after
+// each eligible word's 2nd character — PromptBench's own taxonomy names
+// "spaces or separators" alongside casing as a character-level
+// robustness-sensitivity source.
+func whitespaceObfuscationMutations(prompt string) []Mutation {
+	words := strings.Fields(prompt)
+	indices := eligibleWordIndices(words)
+	var out []Mutation
+	for _, i := range indices {
+		if len(out) >= maxMutationsPerOperator {
+			break
+		}
+		w := words[i]
+		runes := []rune(w)
+		mutatedWord := string(runes[:2]) + "​" + string(runes[2:])
+		mutated := make([]string, len(words))
+		copy(mutated, words)
+		mutated[i] = mutatedWord
+		out = append(out, Mutation{Operator: "whitespace-obfuscation", Prompt: strings.Join(mutated, " ")})
+	}
+	return out
+}
+
+// homoglyphReplacer swaps a/e/o/p for visually-identical Cyrillic
+// look-alikes — the exact substitution internal/redteam's
+// ascii-homoglyph-smuggling plugin already validates as meaningful, reused
+// here for a different purpose (trigger robustness, not security evasion).
+var homoglyphReplacer = strings.NewReplacer(
+	"a", "а",
+	"e", "е",
+	"o", "о",
+	"p", "р",
+)
+
+// unicodeHomoglyphMutations swaps a/e/o/p for Cyrillic look-alikes in each
+// eligible word. A word with no a/e/o/p (e.g. "this") is eligible by length
+// but produces no mutation — homoglyphReplacer.Replace is a no-op on it, so
+// the loop naturally skips it without a separate check.
+func unicodeHomoglyphMutations(prompt string) []Mutation {
+	words := strings.Fields(prompt)
+	indices := eligibleWordIndices(words)
+	var out []Mutation
+	for _, i := range indices {
+		if len(out) >= maxMutationsPerOperator {
+			break
+		}
+		w := words[i]
+		swapped := homoglyphReplacer.Replace(w)
+		if swapped == w {
+			continue
+		}
+		mutated := make([]string, len(words))
+		copy(mutated, words)
+		mutated[i] = swapped
+		out = append(out, Mutation{Operator: "unicode-homoglyph", Prompt: strings.Join(mutated, " ")})
+	}
+	return out
+}
+
 // WrapLLMParaphrases wraps already-generated paraphrase strings (fuzz_llm)
 // into Mutations. This package still never calls a model itself — the
 // caller (internal/runner, which already holds a client) generates or
