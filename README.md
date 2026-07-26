@@ -682,6 +682,14 @@ pick up whatever ships next, with no build reproducibility).
 
 Gates CI on **new** regressions only — a flaky non-deterministic miss won't fail your build every time. Commits both the status badge (`passing` / `partial` / `regressed`) and `.skillci/history.json` back into the checkout on every run, including runs where a regression is caught — that history is what lets the self-growing eval loop avoid re-proposing the same generated case every run and lets `skillci bisect` auto-detect its good/bad commits, so it needs to actually reach your repo. The action only commits locally within the checkout; add a push step in your own workflow (or `git-auto-commit-action`) to land it.
 
+**Not on GitHub Actions?** `skillci` is a plain Go binary with no
+GitHub-specific dependency — see
+[docs/ci/gitlab.md](docs/ci/gitlab.md),
+[docs/ci/azure-devops.md](docs/ci/azure-devops.md), and
+[docs/ci/jenkins.md](docs/ci/jenkins.md) for copy-paste snippets. No
+dedicated plugin needed for any of them; a shell step calling the binary
+is all it takes.
+
 On a pull request, set `pr-comment: true` to get results posted directly
 on the PR instead of only in the Action's own log — the same comment gets
 updated on every subsequent push to that PR rather than piling up a new
