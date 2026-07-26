@@ -26,6 +26,12 @@ type Result struct {
 	InputTokens  int
 	SnapshotDiff *snapshot.Diff
 	FuzzFindings []fuzz.Finding
+	// FuzzCoverage is nil unless the case has Fuzz enabled AND fuzzing
+	// actually ran (same guard as FuzzFindings) — reports, per operator,
+	// how many words were eligible vs. how many actually became a
+	// mutation, so a prompt that dodges every operator is distinguishable
+	// from one with real, passing coverage.
+	FuzzCoverage map[string]fuzz.OperatorCoverage
 	// ResponseText is the model's response with any trigger marker line
 	// stripped (the same `content` used for Contains/NotContains checks
 	// and snapshotting) — carried on Result so callers like the
@@ -219,7 +225,8 @@ If, given the user's message, you would invoke this skill, begin your response w
 	// reason) and only when there's a Triggered expectation for a mutated
 	// prompt's outcome to be compared against.
 	if len(result.Failures) == 0 && c.Assert.Fuzz != nil && *c.Assert.Fuzz && c.Assert.Triggered != nil {
-		mutations := fuzz.Generate(c.Prompt)
+		mutations, coverage := fuzz.Generate(c.Prompt)
+		result.FuzzCoverage = coverage
 		if c.Assert.FuzzLLM != nil && *c.Assert.FuzzLLM {
 			paraphrases, perr := llmParaphrases(ctx, client, model, skillDir, c.Prompt)
 			if perr != nil {

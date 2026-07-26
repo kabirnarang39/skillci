@@ -29,6 +29,28 @@ func printFuzzFindings(w io.Writer, findings []fuzz.Finding) {
 	}
 }
 
+// printFuzzCoverage prints a [FUZZ COVERAGE] line only when zero mutations
+// exist across both findings and the coverage map's Generated counts — a
+// prompt that dodged every operator entirely (no synonym hits, every word
+// too short for the length-gated operators) gets a visible "nothing was
+// actually tested" note instead of a silent, indistinguishable-from-covered
+// pass. Never printed when real mutations exist, even if some individual
+// operator's coverage is zero — that's normal (not every operator applies
+// to every prompt).
+func printFuzzCoverage(w io.Writer, findings []fuzz.Finding, coverage map[string]fuzz.OperatorCoverage) {
+	if len(findings) > 0 {
+		return
+	}
+	totalGenerated := 0
+	for _, c := range coverage {
+		totalGenerated += c.Generated
+	}
+	if totalGenerated > 0 {
+		return
+	}
+	fmt.Fprintln(w, "  [FUZZ COVERAGE] 0 mutations generated across all operators — this prompt had no applicable mutation (too short, or no synonym-map hits); fuzz testing ran but produced no real signal")
+}
+
 // printLatencyWarning prints a [LATENCY] line only when result.LatencyExceeded
 // is true — mirroring how [SNAPSHOT CHANGED]/[FUZZ] only print on a
 // detected condition, never on every passing run. maxLatencyMs is the

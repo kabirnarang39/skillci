@@ -679,6 +679,65 @@ func TestRunCaseFuzzNotEnabledNoFindings(t *testing.T) {
 	}
 }
 
+func TestRunCaseFuzzPopulatesCoverage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "fuzz-coverage-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr(), Fuzz: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FuzzCoverage == nil {
+		t.Fatal("FuzzCoverage is nil, want it populated when fuzz: true ran")
+	}
+	if _, ok := result.FuzzCoverage["typo-perturbation"]; !ok {
+		t.Errorf("FuzzCoverage = %+v, missing typo-perturbation entry", result.FuzzCoverage)
+	}
+}
+
+func TestRunCaseFuzzNotEnabledNoCoverage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "SKILLCI_TRIGGERED: true"}},
+			"usage":   map[string]int{"input_tokens": 50},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	client := anthropic.NewClient("test-key").WithBaseURL(srv.URL)
+	dir := newSkillDir(t)
+	c := evalspec.Case{
+		Name:   "no-fuzz-case",
+		Prompt: "Can you write me a haiku?",
+		Assert: evalspec.Assertions{Triggered: truePtr()},
+	}
+
+	result, err := RunCase(context.Background(), client, dir, "claude-sonnet-5", c, nil, "", "")
+	if err != nil {
+		t.Fatalf("RunCase() error = %v", err)
+	}
+	if result.FuzzCoverage != nil {
+		t.Errorf("FuzzCoverage = %+v, want nil when Fuzz assertion is not set", result.FuzzCoverage)
+	}
+}
+
 func TestRunCaseFuzzSkippedWithoutTriggeredAssertion(t *testing.T) {
 	srv := stubServer(t, "SKILLCI_TRIGGERED: true\nA haiku.", 100)
 	defer srv.Close()

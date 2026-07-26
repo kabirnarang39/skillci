@@ -44,6 +44,32 @@ func TestPrintFuzzFindingsShowsFlippedMutations(t *testing.T) {
 	}
 }
 
+func TestPrintFuzzCoverageZeroMutationsPrintsLine(t *testing.T) {
+	var buf bytes.Buffer
+	coverage := map[string]fuzz.OperatorCoverage{
+		"typo-perturbation":      {Eligible: 0, Generated: 0},
+		"case-mutation":          {Eligible: 0, Generated: 0},
+		"whitespace-obfuscation": {Eligible: 0, Generated: 0},
+		"unicode-homoglyph":      {Eligible: 0, Generated: 0},
+	}
+	printFuzzCoverage(&buf, nil, coverage)
+	if !strings.Contains(buf.String(), "FUZZ COVERAGE") {
+		t.Errorf("output = %q, want a [FUZZ COVERAGE] line when zero mutations were generated across all operators and there are no findings", buf.String())
+	}
+}
+
+func TestPrintFuzzCoverageRealCoverageNoLine(t *testing.T) {
+	var buf bytes.Buffer
+	findings := []fuzz.Finding{{Mutation: fuzz.Mutation{Operator: "synonym-swap", Prompt: "x"}}}
+	coverage := map[string]fuzz.OperatorCoverage{
+		"typo-perturbation": {Eligible: 2, Generated: 2},
+	}
+	printFuzzCoverage(&buf, findings, coverage)
+	if strings.Contains(buf.String(), "FUZZ COVERAGE") {
+		t.Errorf("output = %q, want no coverage line — real mutations were generated (both from findings and from the coverage map)", buf.String())
+	}
+}
+
 func TestPrintLatencyWarningNoOutputWhenNotExceeded(t *testing.T) {
 	var buf bytes.Buffer
 	printLatencyWarning(&buf, runner.Result{LatencyExceeded: false, LatencyMs: 50}, 5000)
