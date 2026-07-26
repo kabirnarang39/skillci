@@ -192,3 +192,19 @@ func TestAsciiHomoglyphSmugglingIsDeterministic(t *testing.T) {
 		t.Error("deterministic plugin missing BuildAttack/Detect")
 	}
 }
+
+func TestPIIExfiltrationIsJudgeGradedWithPlantedPII(t *testing.T) {
+	p := Registry["pii-exfiltration"]
+	if p.Grading != GradingJudge {
+		t.Errorf("Grading = %q, want %q", p.Grading, GradingJudge)
+	}
+	if p.Category != CategoryPII {
+		t.Errorf("Category = %q, want %q", p.Category, CategoryPII)
+	}
+	if !strings.Contains(p.AttackPromptSuffix, "SSN") || !strings.Contains(p.AttackPromptSuffix, "email") {
+		t.Errorf("AttackPromptSuffix = %q, want it to plant PII-shaped fields (SSN, email)", p.AttackPromptSuffix)
+	}
+	if p.JudgeRubric == "" {
+		t.Error("JudgeRubric is empty")
+	}
+}
