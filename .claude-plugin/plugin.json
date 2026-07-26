@@ -1,0 +1,9 @@
+{
+  "name": "skillci",
+  "description": "Lint, eval, and regression-test Claude Skills against a model matrix. Installs skillci-guardrails, which auto-verifies any SKILL.md an agent creates or edits with skillci check/eval before treating the change as done.",
+  "author": {
+    "name": "Kabir Narang",
+    "url": "https://github.com/kabirnarang39"
+  },
+  "homepage": "https://github.com/kabirnarang39/skillci"
+}

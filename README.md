@@ -12,7 +12,7 @@
 
 A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
 
-[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Commands](#commands) · [Status](#status)
+[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [Commands](#commands) · [Status](#status)
 
 ## What's inside
 
@@ -726,6 +726,30 @@ release tags, since the extension versions independently. Requires a
 `VSCE_PAT` repo secret (Marketplace) and, optionally, `OVSX_PAT` (Open
 VSX; best-effort, won't fail the release if missing) before the first tag
 push will actually publish anything.
+
+## For AI agents: the skillci-guardrails skill
+
+Most `SKILL.md` files today are written or edited by an agent, not typed
+by hand — which means the highest-leverage place to enforce skill quality
+isn't a human remembering to run a linter, it's the agent's own workflow.
+[`skills/skillci-guardrails`](skills/skillci-guardrails/SKILL.md) is a
+Claude Skill that makes any Claude Code session automatically run
+`skillci check` — and `skillci eval` where cases exist — every time it
+creates or edits a `SKILL.md`, the same way a pre-commit hook runs a
+linter after any other code change.
+
+Install it as a plugin (recommended — Claude Code auto-discovers the
+skill from the plugin, no manual copying):
+
+```
+/plugin marketplace add kabirnarang39/skillci
+/plugin install skillci
+```
+
+Or copy the directory directly into a project's own `.claude/skills/` if
+you'd rather not add a marketplace source. Either way, once installed,
+every skill an agent writes in that project gets verified without you
+having to ask for it each time.
 
 ## Commands
 
