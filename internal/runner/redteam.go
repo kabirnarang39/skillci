@@ -58,17 +58,31 @@ func runRedteamPlugins(ctx context.Context, client *anthropic.Client, model, sys
 			var content string
 			if len(plugin.Turns) > 0 {
 				var history []anthropic.ConversationTurn
-				var final string
-				for _, step := range plugin.Turns {
-					history = append(history, anthropic.ConversationTurn{Role: "user", Content: step.Message})
+				for i, step := range plugin.Turns {
+					// Turn 1 is anchored in the case's own prompt (mirroring
+					// the single-turn AttackPromptSuffix path below) so the
+					// model stays in-context for the skill it's actually
+					// being tested against — otherwise a compliant model
+					// against a narrow skill just replies with the harness's
+					// own "SKILLCI_TRIGGERED: false" scaffolding to every
+					// generic crescendo turn, and the attack never really runs.
+					message := step.Message
+					if i == 0 {
+						message = c.Prompt + "\n\n" + step.Message
+					}
+					history = append(history, anthropic.ConversationTurn{Role: "user", Content: message})
 					msg, err := client.SendConversation(ctx, model, systemPrompt, history)
 					if err != nil {
 						return nil, err
 					}
-					history = append(history, anthropic.ConversationTurn{Role: "assistant", Content: msg.Text})
-					final = msg.Text
+					// Strip the trigger marker from every turn's response
+					// before threading it into history — otherwise a raw
+					// "SKILLCI_TRIGGERED: false" reply pollutes the
+					// conversation context the model sees on later turns.
+					_, stripped := parseTriggerMarker(msg.Text)
+					history = append(history, anthropic.ConversationTurn{Role: "assistant", Content: stripped})
+					content = stripped
 				}
-				_, content = parseTriggerMarker(final)
 			} else {
 				attackPrompt := c.Prompt + plugin.AttackPromptSuffix
 				msg, err := client.Send(ctx, model, systemPrompt, attackPrompt)
