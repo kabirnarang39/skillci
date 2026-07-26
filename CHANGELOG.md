@@ -7,6 +7,37 @@ and this project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [v0.5.0] — 2026-07-26
+
+### Added
+- Supply-chain trust signals: SBOM (SPDX, per release archive), cosign
+  keyless signing of `checksums.txt` via GitHub Actions OIDC, SHA-pinned
+  GitHub Actions across all workflows, hardened token permissions
+  (read-all default, write/id-token scoped to the job that needs it),
+  OpenSSF Scorecard workflow + README badge, `MAINTAINERS.md`.
+- `skills/skillci-guardrails`: a Claude Skill (installable as a plugin —
+  `.claude-plugin/plugin.json` + `marketplace.json`) that teaches an
+  agent to author a `SKILL.md` defensively (mapped to skillci's own
+  OWASP-mapped lint rules) and automatically verify it with `check`/`eval`
+  after every edit. Ships with 5 real eval cases testing its own trigger
+  accuracy (3 positive, 2 negative prompts).
+- `skillci check --mode warn` and `.skillci.yaml`'s `lint.mode`/
+  `lint.rules`: gradual, non-blocking CI adoption — report every finding
+  without failing the build, and promote specific rules to blocking one
+  at a time instead of an all-or-nothing cutover.
+- Docs for GitLab CI, Azure Pipelines, and Jenkins (`docs/ci/`) — plain
+  CLI invocation snippets, no dedicated plugin needed for any of them.
+- `skillci report --compliance nist-ai-rmf|eu-ai-act`: a Markdown
+  evidence report (not a certification) mapping a skill's eval cases and
+  run history onto NIST AI RMF's Measure function or EU AI Act Articles
+  11/12/19/26. `.skillci.yaml`'s new `history_retention_runs` makes
+  `.skillci/history.json`'s retention window configurable (was a fixed
+  200-run cap).
+- `skillci mcp-serve`: every skillci command (`init check eval regress
+  fuzz bisect accept diff badge report`) exposed as a native MCP tool
+  over stdio, each invoking the real cobra command in-process so a tool
+  call can never drift from the equivalent CLI invocation.
+
 ## [v0.4.1] — 2026-07-26
 
 ### Added
