@@ -29,6 +29,34 @@ func printFuzzFindings(w io.Writer, findings []fuzz.Finding) {
 	}
 }
 
+// fuzzGeneratedCasesCap mirrors internal/regress.go's own
+// maxFuzzGeneratedCases constant. Duplicated rather than imported because
+// this package reports what happened, it doesn't decide it — importing the
+// cap value here would create a reverse dependency from a display concern
+// onto the engine's internal constant for no behavioral benefit, since this
+// is purely for an accurate "N/M" count in the printed notice.
+const fuzzGeneratedCasesCap = 5
+
+// printFuzzGeneratedCapNotice prints a note when more mutations flipped
+// than could become generated cases, so a case that hits the cap doesn't
+// read as if every flip was captured. isFirstRun must be the same !hadPrior
+// value RunMatrix used — this only fired at all if isFirstRun is true.
+func printFuzzGeneratedCapNotice(w io.Writer, findings []fuzz.Finding, isFirstRun bool) {
+	if !isFirstRun {
+		return
+	}
+	flipped := 0
+	for _, f := range findings {
+		if f.Flipped {
+			flipped++
+		}
+	}
+	if flipped <= fuzzGeneratedCasesCap {
+		return
+	}
+	fmt.Fprintf(w, "  [FUZZ] %d/%d flipped mutations proposed as generated cases (capped) — see findings above for the rest\n", fuzzGeneratedCasesCap, flipped)
+}
+
 // printFuzzCoverage prints a [FUZZ COVERAGE] line only when zero mutations
 // exist across both findings and the coverage map's Generated counts — a
 // prompt that dodged every operator entirely (no synonym hits, every word

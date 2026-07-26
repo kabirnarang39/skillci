@@ -32,6 +32,12 @@ type Outcome struct {
 	// failed — ShouldFailCI treats this as a hard CI failure regardless
 	// of the configured FailOn policy.
 	StrictDimensionFail bool
+	// IsFirstRun is RunMatrix's !hadPrior for this case+model — true only
+	// when there was no prior history.Run result to compare against. The
+	// self-growing fuzz-generation loop (and its 5-per-case+model cap)
+	// only ever fires when this is true, so callers reporting on that cap
+	// need this to know whether it could have fired at all.
+	IsFirstRun bool
 }
 
 // matchesStrictDimensions reports whether dims matches ANY key/value pair
@@ -194,6 +200,7 @@ func RunMatrix(ctx context.Context, client *anthropic.Client, skillDir string, c
 			report.Outcomes = append(report.Outcomes, Outcome{
 				Case: c, Model: model, Result: result, IsNewRegression: isNewRegression,
 				StrictDimensionFail: !result.Passed && matchesStrictDimensions(c.Dimensions, cfg.StrictDimensions),
+				IsFirstRun:          !hadPrior,
 			})
 		}
 	}

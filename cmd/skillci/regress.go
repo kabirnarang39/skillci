@@ -96,6 +96,7 @@ func newRegressCmd() *cobra.Command {
 					fmt.Fprintf(cmd.OutOrStdout(), "  [SNAPSHOT CHANGED] %s\n", o.Result.SnapshotDiff.Render)
 				}
 				printFuzzFindings(cmd.OutOrStdout(), o.Result.FuzzFindings)
+				printFuzzGeneratedCapNotice(cmd.OutOrStdout(), o.Result.FuzzFindings, o.IsFirstRun)
 				printFuzzCoverage(cmd.OutOrStdout(), o.Result.FuzzFindings, o.Result.FuzzCoverage)
 				if o.Case.Assert.MaxLatencyMs != nil {
 					printLatencyWarning(cmd.OutOrStdout(), o.Result, *o.Case.Assert.MaxLatencyMs)

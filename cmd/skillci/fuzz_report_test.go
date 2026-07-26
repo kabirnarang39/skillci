@@ -44,6 +44,52 @@ func TestPrintFuzzFindingsShowsFlippedMutations(t *testing.T) {
 	}
 }
 
+func TestPrintFuzzGeneratedCapNoticeWhenCapped(t *testing.T) {
+	var buf bytes.Buffer
+	findings := []fuzz.Finding{
+		{Mutation: fuzz.Mutation{Operator: "typo-perturbation", Prompt: "a"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "case-mutation", Prompt: "b"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "whitespace-obfuscation", Prompt: "c"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "unicode-homoglyph", Prompt: "d"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "e"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "f"}, Flipped: true},
+	}
+	printFuzzGeneratedCapNotice(&buf, findings, true)
+	if !strings.Contains(buf.String(), "5/6") {
+		t.Errorf("output = %q, want it to state 5/6 flipped mutations were proposed as generated cases", buf.String())
+	}
+}
+
+func TestPrintFuzzGeneratedCapNoticeNotCapped(t *testing.T) {
+	var buf bytes.Buffer
+	findings := []fuzz.Finding{
+		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "e"}, Flipped: true},
+	}
+	printFuzzGeneratedCapNotice(&buf, findings, true)
+	if buf.String() != "" {
+		t.Errorf("output = %q, want empty — only 1 flip, well under the cap", buf.String())
+	}
+}
+
+func TestPrintFuzzGeneratedCapNoticeOnlyWhenGenerating(t *testing.T) {
+	var buf bytes.Buffer
+	findings := []fuzz.Finding{
+		{Mutation: fuzz.Mutation{Operator: "typo-perturbation", Prompt: "a"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "case-mutation", Prompt: "b"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "whitespace-obfuscation", Prompt: "c"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "unicode-homoglyph", Prompt: "d"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "e"}, Flipped: true},
+		{Mutation: fuzz.Mutation{Operator: "negation", Prompt: "f"}, Flipped: true},
+	}
+	// isFirstRun=false means RunMatrix's !hadPrior gate never fired, so no
+	// GeneratedCases were proposed at all -- the notice must stay silent,
+	// not claim a cap that was never actually applied.
+	printFuzzGeneratedCapNotice(&buf, findings, false)
+	if buf.String() != "" {
+		t.Errorf("output = %q, want empty — this wasn't the case's first run, nothing was actually proposed", buf.String())
+	}
+}
+
 func TestPrintFuzzCoverageZeroMutationsPrintsLine(t *testing.T) {
 	var buf bytes.Buffer
 	coverage := map[string]fuzz.OperatorCoverage{
