@@ -114,7 +114,15 @@ func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt strin
 	if err != nil {
 		return Message{}, err
 	}
+	return c.sendWithRetry(ctx, body)
+}
 
+// sendWithRetry issues one Messages API call for the given pre-marshaled
+// request body, retrying a bounded number of times on a retryable
+// transient failure. Shared by Send (single-turn) and SendConversation
+// (full message history) — retry/backoff behavior is identical either
+// way, only how body gets built differs.
+func (c *Client) sendWithRetry(ctx context.Context, body []byte) (Message, error) {
 	var lastErr error
 	for attempt := 1; attempt <= maxSendAttempts; attempt++ {
 		if attempt > 1 {
@@ -135,6 +143,34 @@ func (c *Client) Send(ctx context.Context, model, systemPrompt, userPrompt strin
 		}
 	}
 	return Message{}, fmt.Errorf("after %d attempts: %w", maxSendAttempts, lastErr)
+}
+
+// ConversationTurn is one message in a multi-turn conversation sent via
+// SendConversation — Role is "user" or "assistant".
+type ConversationTurn struct {
+	Role    string
+	Content string
+}
+
+// SendConversation issues one Messages API call carrying the full turns
+// history, unlike Send (which always sends a single "user" message with
+// no prior context) — used by redteam plugins that need multi-turn
+// escalation state threaded across calls.
+func (c *Client) SendConversation(ctx context.Context, model, systemPrompt string, turns []ConversationTurn) (Message, error) {
+	msgs := make([]reqMsg, len(turns))
+	for i, t := range turns {
+		msgs[i] = reqMsg(t)
+	}
+	body, err := json.Marshal(sendRequest{
+		Model:     model,
+		MaxTokens: 4096,
+		System:    systemPrompt,
+		Messages:  msgs,
+	})
+	if err != nil {
+		return Message{}, err
+	}
+	return c.sendWithRetry(ctx, body)
 }
 
 // sendOnce issues a single Messages API call. retryable reports whether a

@@ -3,8 +3,10 @@ package anthropic
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -191,5 +193,37 @@ func TestSendMeasuresLatency(t *testing.T) {
 	}
 	if msg.Latency < 50*time.Millisecond {
 		t.Errorf("Latency = %v, want at least 50ms (the stub server's deliberate delay)", msg.Latency)
+	}
+}
+
+func TestSendConversationThreadsMultipleTurns(t *testing.T) {
+	var lastBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		lastBody = string(body)
+		resp := map[string]any{
+			"content": []map[string]string{{"type": "text", "text": "turn 2 reply"}},
+			"usage":   map[string]int{"input_tokens": 5},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	c := NewClient("test-key").WithBaseURL(srv.URL)
+	turns := []ConversationTurn{
+		{Role: "user", Content: "first message"},
+		{Role: "assistant", Content: "first reply"},
+		{Role: "user", Content: "second message"},
+	}
+	msg, err := c.SendConversation(context.Background(), "claude-sonnet-5", "sys", turns)
+	if err != nil {
+		t.Fatalf("SendConversation() error = %v", err)
+	}
+	if msg.Text != "turn 2 reply" {
+		t.Errorf("Text = %q, want %q", msg.Text, "turn 2 reply")
+	}
+	if !strings.Contains(lastBody, "first message") || !strings.Contains(lastBody, "first reply") || !strings.Contains(lastBody, "second message") {
+		t.Errorf("request body = %s, want all three turns present", lastBody)
 	}
 }
