@@ -23,7 +23,7 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 | **Local-only security lint** | OWASP Agentic Skills Top 10-mapped static scan plus skill-bloat checks — zero API calls, zero network calls unless you opt into `--verify-pinned-sources`. |
 | **Gradual-adoption lint mode** | `--mode warn` (or `.skillci.yaml`'s `lint: mode/rules`) reports every finding without failing the build — pilot skillci across a team, then promote specific rules to blocking one at a time instead of an all-or-nothing cutover. |
 | **LLM-as-judge, done properly** | `judge:` criteria scored by a separate, non-self-judging model — chain-of-thought reasoning before every verdict, response caching, and optional multi-sample self-consistency voting, not just a bare pass/fail prompt. |
-| **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing (synonym swaps, negation, reordering) for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. |
+| **Deterministic + LLM-assisted fuzz** | Non-LLM mutation testing across all 4 levels of PromptBench's own published attack taxonomy — character (typo, case, whitespace, homoglyph), word (synonym swap), sentence (reorder), and semantic (negation, context-prefix) — for free, plus optional model-generated realistic paraphrases (`fuzz_llm`) cached so you pay for generation once, ever. A mutation that flips trigger behavior on a case's first run self-grows into a permanent regression case, exactly like a redteam attack does — no competitor persists a fuzzing-discovered failure as permanent CI coverage. |
 | **Nondeterminism-aware retries** | `flake_retries` reruns a failed trigger check and majority-votes the verdict instead of trusting one noisy sample; `flake_always_sample` votes on every case, not just failing ones, to also catch a regression that got lucky on attempt 1. |
 | **Adversarial redteam assertions** | `redteam:` runs named attack plugins — prompt injection, instruction leakage (verbatim and semantic), excessive agency, SSRF-bait, ASCII/homoglyph smuggling, PII exfiltration, direct jailbreak override, multi-turn crescendo jailbreak, and harmful content elicitation — against the skill. Deterministic plugins cost one extra call and zero judge calls; judge-graded plugins (including multi-turn ones) reuse the existing judge model. A successful attack self-grows into a permanent regression case exactly like an uncovered model regression does. |
 | **Slice-level gating** | Tag cases with `dimensions:` and gate CI strictly on just the segment that matters, independent of the global `fail_on` policy. |
@@ -375,6 +375,26 @@ skillci fuzz path/to/your-skill --model claude-sonnet-5
 
 or let it run automatically as part of `skillci regress` for any case that
 sets `fuzz: true` — no separate invocation needed for full coverage.
+
+Four more operators cover character-level perturbation specifically —
+`typo-perturbation` (a single deterministic transposed-letter edit),
+`case-mutation` (alternating case), `whitespace-obfuscation` (a zero-width
+space inserted mid-word), and `unicode-homoglyph` (Cyrillic look-alike
+substitution, the same technique `ascii-homoglyph-smuggling` uses for
+security testing, applied here to robustness instead). Together with the
+original 4 operators, this maps onto all 4 levels of PromptBench's own
+published LLM-robustness taxonomy (character/word/sentence/semantic) —
+see [PromptBench, arXiv:2306.04528](https://arxiv.org/abs/2306.04528).
+
+A mutation that flips trigger behavior on a `fuzz_strict: true` case's
+first-ever run doesn't just print once and disappear — it self-grows into a
+permanent `evals/_generated/*.yaml` case pinned to that exact wording,
+through the same self-growing eval loop `redteam:` uses. `skillci accept`
+promotes it into a normal regression test that fails until the skill
+genuinely stops mis-handling that phrasing. Capped at 5 self-grown cases per
+case+model per run — the console `[FUZZ]` line states the cap explicitly
+when hit, so nothing is silently dropped from view even though only 5
+become files.
 
 The deterministic operators above test a different failure mode than the
 one that actually burns teams: a fixed synonym dictionary can't anticipate

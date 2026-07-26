@@ -17,6 +17,20 @@ and this project follows [Semantic Versioning](https://semver.org/).
   whose `Turns` field is set. `system-prompt-leak-semantic` closes
   `instruction-leakage`'s documented false-negative (a paraphrased,
   non-verbatim leak previously scored "defended").
+- 4 new `fuzz:` operators (`typo-perturbation`, `case-mutation`,
+  `whitespace-obfuscation`, `unicode-homoglyph`) closing skillci's
+  character-level robustness-testing gap — together with the 4 existing
+  operators, this now maps onto all 4 levels of PromptBench's published
+  attack taxonomy (character/word/sentence/semantic, arXiv:2306.04528).
+  `synonymPairs` grew from 5 to 30 entries. `fuzz.Generate` now also
+  returns per-operator `Coverage`, surfaced as a `[FUZZ COVERAGE]` note
+  when a prompt had zero applicable mutations across every operator.
+  Self-growing fuzz regressions: a mutation that flips trigger behavior on
+  a `fuzz_strict: true` case's first-ever run now becomes a permanent
+  `evals/_generated/*.yaml` case (capped at 5 per case+model per run),
+  through the exact same self-growing eval loop `redteam:` already uses —
+  a fuzzing-discovered brittle phrasing is now covered forever, not just
+  reported once.
 
 ## [v0.5.0] — 2026-07-26
 
