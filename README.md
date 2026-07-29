@@ -12,7 +12,13 @@
 
 A skill fails against a model it's never been tested on → SkillCI doesn't just report red, it **writes the missing test case for you** (`evals/_generated/...`) so `skillci accept` turns it into permanent coverage. That loop — catch once, covered forever — is the whole point.
 
-[What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Why](#why) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Compliance reports](#compliance-evidence-reports) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [MCP server](#mcp-server) · [Commands](#commands) · [Status](#status)
+[Why](#why) · [What's inside](#whats-inside) · [How this compares](#how-this-compares) · [Install](#install) · [Quick start](#quick-start) · [GitHub Actions](#github-actions) · [Dashboard](#optional-hosted-dashboard) · [VS Code](#vs-code-extension) · [Compliance reports](#compliance-evidence-reports) · [For AI agents](#for-ai-agents-the-skillci-guardrails-skill) · [MCP server](#mcp-server) · [Commands](#commands) · [Status](#status)
+
+## Why
+
+You write a Claude Skill. It works today. Six months from now, Anthropic ships a new model, and nobody tested your skill against it first — because until now, no tool did that automatically. It might stop triggering, ignore instructions it used to follow, or blow past a token budget you never knew it had. You find out by accident, not by CI.
+
+Every other kind of software has a safety net for this — tests that fail the moment behavior changes. Skills have had none. SkillCI is that safety net: write down what a skill should do once, and get an automated answer to "did it survive the last model release" instead of finding out the hard way. [Full rationale below.](#the-full-case-for-this)
 
 ## What's inside
 
@@ -37,25 +43,19 @@ A skill fails against a model it's never been tested on → SkillCI doesn't just
 
 Every other tool in this space does one slice of what skillci does — none combine OWASP-mapped skill security scanning, cross-model regression testing, git-native culprit-commit bisection, and a self-growing eval loop in one tool. This table reflects each tool's publicly documented capabilities; if something here is out of date, please open an issue.
 
-| | **skillci** | [skillgrade](https://github.com/mgechev/skillgrade) | [AgentLinter](https://agentlinter.com) | promptfoo / deepeval / braintrust |
+| | **skillci** | promptfoo / deepeval / braintrust | [skillgrade](https://github.com/mgechev/skillgrade) | [AgentLinter](https://agentlinter.com) |
 |---|---|---|---|---|
-| Claude-Skills-native (`SKILL.md`, frontmatter, referenced files) | Yes | Yes | Yes | No — generic prompts, no skill awareness |
-| OWASP Agentic Skills Top 10-mapped security scan | Yes | No | Partial — scans skill content, not OWASP-mapped | No |
-| Cross-model regression matrix, gated on *new* regressions only | Yes | No | No | Yes — generic, not skill-aware |
+| Claude-Skills-native (`SKILL.md`, frontmatter, referenced files) | Yes | No — generic prompts, no skill awareness | Yes | Yes |
+| OWASP Agentic Skills Top 10-mapped security scan | Yes | No | No | Partial — scans skill content, not OWASP-mapped |
+| Cross-model regression matrix, gated on *new* regressions only | Yes | Yes — generic, not skill-aware | No | No |
 | Self-growing eval loop (a failure writes its own test case) | Yes | No | No | No |
 | Git-native bisect (binary-search commit history for the culprit) | Yes | No | No | No |
-| LLM-as-judge | Yes — CoT + caching + self-consistency | Yes — rubric-based | No | Yes |
+| LLM-as-judge | Yes — CoT + caching + self-consistency | Yes | Yes — rubric-based | No |
 | Live editor integration | Yes — VS Code | No | No | No |
-| Adversarial/red-team prompt fuzzing | Yes — 16 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | — | — | Yes — 50+ plugins, cloud-generated, no persistent corpus |
-| Hosted dashboard | Yes — opt-in, self-hosted | — | — | Yes (braintrust) |
+| Adversarial/red-team prompt fuzzing | Yes — 16 plugins incl. multi-turn crescendo, local-only generation, self-growing corpus | Yes — 50+ plugins, cloud-generated, no persistent corpus | — | — |
+| Hosted dashboard | Yes — opt-in, self-hosted | Yes (braintrust) | — | — |
 
 Where a competitor is genuinely ahead — promptfoo ships 50+ red-team plugins to skillci's 16, and years of production hardening skillci's redteam assertions haven't had. Multi-turn crescendo attacks, one of the two gaps this table used to name specifically, are now covered (`crescendo-jailbreak`); plugin count is still smaller by design — [docs/adding-a-redteam-plugin.md](docs/adding-a-redteam-plugin.md) plus `skillci scaffold redteam-plugin` cover how new ones get added. Where skillci is structurally ahead — no cloud roundtrip to generate attacks, and a successful attack becomes a permanent CI regression test instead of a one-time report — that's a narrower, verifiable claim, not "better overall."
-
-## Why
-
-You write a Claude Skill. It works today. Six months from now, Anthropic ships a new model, and nobody tested your skill against it first — because until now, no tool did that automatically. It might stop triggering, ignore instructions it used to follow, or blow past a token budget you never knew it had. You find out by accident, not by CI.
-
-Every other kind of software has a safety net for this — tests that fail the moment behavior changes. Skills have had none. SkillCI is that safety net: write down what a skill should do once, and get an automated answer to "did it survive the last model release" instead of finding out the hard way. [Full rationale below.](#the-full-case-for-this)
 
 ## Install
 
